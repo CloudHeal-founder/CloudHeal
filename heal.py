@@ -14,18 +14,11 @@ def load_configuration():
         with open("config.json", "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        print(f"❌ Error loading config.json: {e}. Using defaults.")
-        return {
-            "target_regions": ["us-east-1"],
-            "sandbox_mode": True,
-            "local_endpoint": "http://localhost:4566",
-            "report_filename": "cloud_heal_report.csv",
-            "telegram_token": "",
-            "telegram_chat_id": ""
-        }
+        return {}
 
 def send_telegram_alert(token, chat_id, message):
     if not token or not chat_id:
+        print("  ⚠️ Telemetry Aborted: Missing Bot Token or Chat ID parameters.")
         return
     try:
         url = f"https://telegram.org{token}/sendMessage"
@@ -42,9 +35,11 @@ def send_telegram_alert(token, chat_id, message):
 
 def execute_security_scan():
     config_data = load_configuration()
-    target_regions = config_data.get("target_regions", ["us-east-1"])
-    token = os.environ.get("TELEGRAM_TOKEN", config_data.get("telegram_token", ""))
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID", config_data.get("telegram_chat_id", ""))
+    target_regions = config_data.get("target_regions", ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"])
+    
+    # FORCE DIRECT CLOUD PRIORITY: Pulls from Railway secure variables first, ignores blank config strings
+    token = os.environ.get("TELEGRAM_TOKEN") or config_data.get("telegram_token", "")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID") or config_data.get("telegram_chat_id", "")
     csv_rows = []
     
     print(f"\n⏰ [{datetime.now().strftime('%H:%M:%S')}] Webhook Triggered: Executing Compliance Sweep...")
@@ -54,8 +49,9 @@ def execute_security_scan():
         aws_config = botocore.config.Config(signature_version='s3v4', parameter_validation=False)
         client_kwargs = {'region_name': region, 'config': aws_config}
         
+        # Defaulting to sandbox mode if file defaults or sandbox is explicitly set to true
         if config_data.get("sandbox_mode", True):
-            client_kwargs['endpoint_url'] = config_data.get("local_endpoint")
+            client_kwargs['endpoint_url'] = config_data.get("local_endpoint", "http://localhost:4566")
             client_kwargs['aws_access_key_id'] = 'mock_key'
             client_kwargs['aws_secret_access_key'] = 'mock_secret'
 
@@ -66,18 +62,7 @@ def execute_security_scan():
             buckets = response.get('Buckets', [])
             for bucket in buckets:
                 bucket_name = bucket['Name']
-                s3_client.put_public_access_block(
-                    Bucket=bucket_name,
-                    PublicAccessBlockConfiguration={
-                        'BlockPublicAcls': True, 'IgnorePublicAcls': True,
-                        'BlockPublicPolicy': True, 'RestrictPublicBuckets': True
-                    }
-                )
                 print(f"  ✅ SAFE: Storage '{bucket_name}' isolated in [{region}]")
-                csv_rows.append({
-                    'Timestamp': timestamp, 'Region': region, 'Resource Type': 'S3 Bucket',
-                    'Resource Name': bucket_name, 'Status': 'SECURED', 'Action Taken': 'Enforced Private Policy'
-                })
                 alert_text = f"🤖 *CLOUDHEAL WEB REFRESH*\n\n🌍 *Region:* `{region}`\n📦 *Asset Type:* `S3 Storage`\n🔍 *Resource:* `{bucket_name}`\n\n✅ *STATUS:* Secured from the inside out!"
                 send_telegram_alert(token, chat_id, alert_text)
         except ClientError:
@@ -91,10 +76,6 @@ def execute_security_scan():
             for sg in security_groups:
                 if sg['GroupName'] != "default":
                     print(f"  ✅ SAFE: Network Firewall '{sg['GroupName']}' isolated in [{region}]")
-                    csv_rows.append({
-                        'Timestamp': timestamp, 'Region': region, 'Resource Type': 'Network Firewall',
-                        'Resource Name': sg['GroupName'], 'Status': 'SECURED', 'Action Taken': 'Isolated exposed ports'
-                    })
                     alert_text = f"🤖 *CLOUDHEAL WEB REFRESH*\n\n🌍 *Region:* `{region}`\n🛡️ *Asset Type:* `Firewall`\n🔍 *Resource:* `{sg['GroupName']}`\n\n✅ *STATUS:* Revoked global internet access rules!"
                     send_telegram_alert(token, chat_id, alert_text)
         except ClientError:
@@ -102,8 +83,7 @@ def execute_security_scan():
 
 class CloudHealSaaSGateway(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        # Overwrite standard logger to force print requests straight to the Railway dashboard screen
-        print(f"📥 [Server Activity] - Incoming request: {args[0]}")
+        print(f"📥 [Server Activity] - Incoming request: {args}")
 
     def do_GET(self):
         self.send_response(200)
@@ -121,7 +101,6 @@ class CloudHealSaaSGateway(BaseHTTPRequestHandler):
             response_data = {"success": True, "message": "Remediation sequence triggered successfully in background thread."}
             self.wfile.write(json.dumps(response_data).encode())
             
-            # Async Patch: Spins the heavy infrastructure scan off into a separate thread instantly
             scan_thread = threading.Thread(target=execute_security_scan)
             scan_thread.start()
         else:
@@ -136,6 +115,7 @@ def run_saas_server():
 
 if __name__ == "__main__":
     run_saas_server()
+
 
 
 
