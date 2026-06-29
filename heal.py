@@ -37,19 +37,21 @@ def execute_security_scan():
     config_data = load_configuration()
     target_regions = config_data.get("target_regions", ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"])
     
-    # FORCE DIRECT CLOUD PRIORITY: Pulls from Railway secure variables first, ignores blank config strings
     token = os.environ.get("TELEGRAM_TOKEN") or config_data.get("telegram_token", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID") or config_data.get("telegram_chat_id", "")
     csv_rows = []
     
     print(f"\n⏰ [{datetime.now().strftime('%H:%M:%S')}] Webhook Triggered: Executing Compliance Sweep...")
 
+    # DIRECT TELEMETRY PROOF: Fires instantly to verify your variables are working perfectly
+    proof_text = f"🤖 *CLOUDHEAL TELEMETRY STATUS SYSTEM*\n\n✅ *CONNECTION SUCCESS:* Your live Railway web server instance has successfully authenticated and linked straight to your phone feed!"
+    send_telegram_alert(token, chat_id, proof_text)
+
     for region in target_regions:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         aws_config = botocore.config.Config(signature_version='s3v4', parameter_validation=False)
         client_kwargs = {'region_name': region, 'config': aws_config}
         
-        # Defaulting to sandbox mode if file defaults or sandbox is explicitly set to true
         if config_data.get("sandbox_mode", True):
             client_kwargs['endpoint_url'] = config_data.get("local_endpoint", "http://localhost:4566")
             client_kwargs['aws_access_key_id'] = 'mock_key'
@@ -115,8 +117,4 @@ def run_saas_server():
 
 if __name__ == "__main__":
     run_saas_server()
-
-
-
-
 
