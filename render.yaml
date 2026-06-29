@@ -1,0 +1,9 @@
+services:
+  - type: worker
+    name: cloudheal-engine
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python heal.py
+    envVars:
+      - key: PYTHON_UNBUFFERED
+        value: "true"
