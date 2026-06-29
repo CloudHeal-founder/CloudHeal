@@ -4,6 +4,7 @@ import csv
 import json
 import os
 import requests
+import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from botocore.exceptions import ClientError
 from datetime import datetime
@@ -100,8 +101,11 @@ def execute_security_scan():
             pass
 
 class CloudHealSaaSGateway(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        # Overwrite standard logger to force print requests straight to the Railway dashboard screen
+        print(f"📥 [Server Activity] - Incoming request: {args[0]}")
+
     def do_GET(self):
-        # Handles the platform health status request
         self.send_response(200)
         self.send_header("Content-type", "application/json")
         self.end_headers()
@@ -109,17 +113,17 @@ class CloudHealSaaSGateway(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(response_data).encode())
 
     def do_POST(self):
-        # Triggers a real-time global scan whenever this endpoint receives an authorized webhook request
         if self.path == "/webhook/scan":
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
             
-            # Fire the global enterprise compliance scan
-            execute_security_scan()
-            
-            response_data = {"success": True, "message": "Global compliance remediation sequence completed successfully."}
+            response_data = {"success": True, "message": "Remediation sequence triggered successfully in background thread."}
             self.wfile.write(json.dumps(response_data).encode())
+            
+            # Async Patch: Spins the heavy infrastructure scan off into a separate thread instantly
+            scan_thread = threading.Thread(target=execute_security_scan)
+            scan_thread.start()
         else:
             self.send_response(404)
             self.end_headers()
@@ -132,6 +136,7 @@ def run_saas_server():
 
 if __name__ == "__main__":
     run_saas_server()
+
 
 
 
