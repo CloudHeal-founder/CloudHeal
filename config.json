@@ -4,5 +4,7 @@
     "local_endpoint": "http://localhost:4566",
     "report_filename": "cloud_heal_report.csv",
     "telegram_token": "8986528611:AAEI3p87vlPc7vBtueMCmyHiK3zZmE6hy7w",
-    "telegram_chat_id": "8520589919"
+    "telegram_chat_id": "8520589919",
+    "gcp_sandbox_mode": true,
+    "azure_sandbox_mode": true
 }
