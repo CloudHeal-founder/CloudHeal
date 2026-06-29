@@ -3,28 +3,10 @@ import botocore
 import csv
 import json
 import os
-import time
 import requests
-import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from botocore.exceptions import ClientError
 from datetime import datetime
-
-# --- PLATFORM BYPASS LAYER ---
-class HealthCheckServer(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"CloudHeal Web Worker Engine Active")
-
-def run_health_check_server():
-    # Automatically listens to Railway's assigned network port
-    port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", port), HealthCheckServer)
-    print(f"🛰️ Platform Health Gateway active on port {port}")
-    server.serve_forever()
-# -----------------------------
 
 def load_configuration():
     try:
@@ -57,14 +39,14 @@ def send_telegram_alert(token, chat_id, message):
     except Exception as e:
         print(f"  ⚠️ Telemetry Alert Failed to Dispatch: {e}")
 
-def scan_and_heal():
+def execute_security_scan():
     config_data = load_configuration()
     target_regions = config_data.get("target_regions", ["us-east-1"])
     token = os.environ.get("TELEGRAM_TOKEN", config_data.get("telegram_token", ""))
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", config_data.get("telegram_chat_id", ""))
     csv_rows = []
     
-    print(f"\n⏰ [{datetime.now().strftime('%H:%M:%S')}] Heartbeat Triggered: Starting Global Sweep...")
+    print(f"\n⏰ [{datetime.now().strftime('%H:%M:%S')}] Webhook Triggered: Executing Compliance Sweep...")
 
     for region in target_regions:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -95,7 +77,7 @@ def scan_and_heal():
                     'Timestamp': timestamp, 'Region': region, 'Resource Type': 'S3 Bucket',
                     'Resource Name': bucket_name, 'Status': 'SECURED', 'Action Taken': 'Enforced Private Policy'
                 })
-                alert_text = f"🤖 *CLOUDHEAL AUTOMATION NOTICE*\n\n🌍 *Region:* `{region}`\n📦 *Asset Type:* `S3 Storage Bucket`\n🔍 *Resource:* `{bucket_name}`\n\n✅ *STATUS FIXED:* Secured from the inside out!"
+                alert_text = f"🤖 *CLOUDHEAL WEB REFRESH*\n\n🌍 *Region:* `{region}`\n📦 *Asset Type:* `S3 Storage`\n🔍 *Resource:* `{bucket_name}`\n\n✅ *STATUS:* Secured from the inside out!"
                 send_telegram_alert(token, chat_id, alert_text)
         except ClientError:
             pass
@@ -112,38 +94,44 @@ def scan_and_heal():
                         'Timestamp': timestamp, 'Region': region, 'Resource Type': 'Network Firewall',
                         'Resource Name': sg['GroupName'], 'Status': 'SECURED', 'Action Taken': 'Isolated exposed ports'
                     })
-                    alert_text = f"🤖 *CLOUDHEAL AUTOMATION NOTICE*\n\n🌍 *Region:* `{region}`\n🛡️ *Asset Type:* `Network Firewall`\n🔍 *Resource:* `{sg['GroupName']}`\n\n✅ *STATUS FIXED:* Revoked global internet access rules!"
+                    alert_text = f"🤖 *CLOUDHEAL WEB REFRESH*\n\n🌍 *Region:* `{region}`\n🛡️ *Asset Type:* `Firewall`\n🔍 *Resource:* `{sg['GroupName']}`\n\n✅ *STATUS:* Revoked global internet access rules!"
                     send_telegram_alert(token, chat_id, alert_text)
         except ClientError:
             pass
 
-    # Save spreadsheet data append style
-    csv_columns = ['Timestamp', 'Region', 'Resource Type', 'Resource Name', 'Status', 'Action Taken']
-    csv_filename = config_data.get("report_filename", "cloud_heal_report.csv")
-    try:
-        with open(csv_filename, mode='a', newline='', encoding='utf-8') as csv_file:
-            writer = csv.DictWriter(csv_file, fieldnames=csv_columns)
-            writer.writerows(csv_rows)
-    except Exception:
-        pass
+class CloudHealSaaSGateway(BaseHTTPRequestHandler):
+    def do_GET(self):
+        # Handles the platform health status request
+        self.send_response(200)
+        self.send_header("Content-type", "application/json")
+        self.end_headers()
+        response_data = {"status": "ONLINE", "service": "CloudHeal SaaS Control Engine"}
+        self.wfile.write(json.dumps(response_data).encode())
 
-def main_automation_loop():
-    print("🚀 CloudHeal Automation Core Activated: Engine is now permanently live.")
-    
-    # Spin up the background web health thread
-    web_thread = threading.Thread(target=run_health_check_server, daemon=True)
-    web_thread.start()
-    
-    while True:
-        try:
-            scan_and_heal()
-            print("💤 Sweep complete. Engine entering standby sleep mode for 60 seconds...")
-            time.sleep(60)
-        except KeyboardInterrupt:
-            print("\n🛑 CloudHeal Engine safely halted by operator request.")
-            break
+    def do_POST(self):
+        # Triggers a real-time global scan whenever this endpoint receives an authorized webhook request
+        if self.path == "/webhook/scan":
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            
+            # Fire the global enterprise compliance scan
+            execute_security_scan()
+            
+            response_data = {"success": True, "message": "Global compliance remediation sequence completed successfully."}
+            self.wfile.write(json.dumps(response_data).encode())
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+def run_saas_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), CloudHealSaaSGateway)
+    print(f"🚀 CloudHeal Enterprise SaaS Webhook Core Online on port {port}")
+    server.serve_forever()
 
 if __name__ == "__main__":
-    main_automation_loop()
+    run_saas_server()
+
 
 
