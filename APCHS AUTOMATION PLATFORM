@@ -1,10 +1,11 @@
 import json
 import os
-import time
 from datetime import datetime
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from flask import Flask, jsonify, render_template_string
 
-# --- AGENTLESS MULTI-CLOUD MATRIX ARCHITECTURE STORAGE ---
+app = Flask(__name__)
+
+# --- INDUSTRIAL-GRADE AGENTLESS MULTI-CLOUD MATRIX CORE DATA ---
 MATRIX_DATA = {
     "engine_status": "OPERATIONAL",
     "monitored_providers": ["AWS Dedicated API", "Google Cloud Asset Plane", "Microsoft Azure Resource Graph"],
@@ -26,51 +27,36 @@ MATRIX_DATA = {
     "telemetry_stream": []
 }
 
-def perform_agentless_out_of_band_scan():
+@app.route('/')
+@app.route('/dashboard')
+def render_dashboard():
+    return render_template_string(DASHBOARD_HTML)
+
+@app.route('/api/matrix-state', methods=['GET'])
+def get_matrix_state():
+    return jsonify(MATRIX_DATA)
+
+@app.route('/api/trigger-scan', methods=['GET'])
+def trigger_scan():
     stamp = datetime.now().strftime('%H:%M:%S')
     MATRIX_DATA["nodes_scanned"] += 284
     MATRIX_DATA["attack_paths_severed"] += 4
     if MATRIX_DATA["corporate_risk_index"] > 10:
         MATRIX_DATA["corporate_risk_index"] -= 22
+    
     log_entry = {
         "time": stamp,
         "details": "Pulled live posture inventories from cloud provider control planes without executing code on target hosts."
     }
     MATRIX_DATA["telemetry_stream"].insert(0, log_entry)
-    print(f"⏰ [{stamp}] Control Plane Mapping Complete: Out-of-band toxic combinations mitigated.")
+    return jsonify({"status": "SUCCESS"})
 
-class MatrixEnterpriseEngine(BaseHTTPRequestHandler):
-    def log_message(self, format, *args):
-        pass
-
-    def do_GET(self):
-        if self.path == "/" or self.path == "/dashboard":
-            self.send_response(200)
-            self.send_header("Content-type", "text/html")
-            self.end_headers()
-            self.wfile.write(DASHBOARD_HTML.encode('utf-8'))
-        elif self.path == "/api/matrix-state":
-            self.send_response(200)
-            self.send_header("Content-type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(json.dumps(MATRIX_DATA).encode('utf-8'))
-        elif self.path == "/api/trigger-scan":
-            perform_agentless_out_of_band_scan()
-            self.send_response(200)
-            self.send_header("Content-type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"status": "SUCCESS"}).encode('utf-8'))
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-# --- ENTERPRISE DASHBOARD UI CORE (ZERO INDENTATION BALANCING) ---
+# --- ENTERPRISE DASHBOARD UI CORE ---
 DASHBOARD_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>CloudHeal Matrix Control Console</title>
+    <title>APCHS Automation Core Console</title>
     <style>
         body { background: #080c14; color: #e5e7eb; font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; padding: 0; }
         .header { background: #0f172a; border-bottom: 1px solid #1e293b; padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; }
@@ -113,9 +99,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             return `
                 <div class="inventory-row ${edgeStyle}">
                     <div>
-                        <span style="color: ${accentColor}; font-weight:bold; font-size:11px;">[${provider} APIS DISCOVERY ENGINE]</span><br>
+                        <span style="color: ${accentColor}; font-weight:bold; font-size:11px;">[${provider} CONTROL PLANE DISCOVERY]</span><br>
                         <span style="font-size:16px; font-weight:bold; color:#ffffff;">${item.type}: <span style="color:#38bdf8;">${item.identifier || item.name}</span></span><br>
-                        <span style="color:#9ca3af; font-size:13px;">Exploit Vector: <span style="color:#ef4444; font-weight:bold;">${item.flaw}</span> | Control Zone: <code>${item.region}</code></span>
+                        <span style="color:#9ca3af; font-size:13px;">Attack Vector: <span style="color:#ef4444; font-weight:bold;">${item.flaw}</span> | Cloud Zone: <code>${item.region}</code></span>
                     </div>
                     <div style="text-align: right;">
                         <div class="status-tag">SECURED & COMPLIANT</div>
@@ -139,8 +125,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 <body>
     <div class="header">
         <div>
-            <h1 style="margin:0; font-size:20px; font-weight:700;">CLOUDHEAL <span style="color:#38bdf8; font-weight:300;">MATRIX PLATFORM</span></h1>
-            <p style="margin:0; font-size:11px; color:#4b5563;">Flagship Agentless CNAPP Architecture Matrix</p>
+            <h1 style="margin:0; font-size:20px; font-weight:700;">APCHS <span style="color:#38bdf8; font-weight:300;">AUTOMATION PLATFORM</span></h1>
+            <p style="margin:0; font-size:11px; color:#4b5563;">Protect Cloud Heal Security Core Matrix (Wiz & Orca Alternative)</p>
         </div>
         <button id="btn-action" class="action-btn" onclick="fireEngineSweep()">TRIGGER AGENTLESS MULTI-CLOUD SWEEP</button>
     </div>
@@ -165,9 +151,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 """
 
 if __name__ == "__main__":
-    # Dynamically reads the hosting environment port variable or falls back to 5000 locally
-    listen_port = int(os.environ.get("PORT", 5000))
-    server_instance = HTTPServer(("0.0.0.0", listen_port), MatrixEnterpriseEngine)
-    print(f"🚀 CloudHeal Matrix Core Online at http://localhost:{listen_port}")
-    server_instance.serve_forever()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
 
