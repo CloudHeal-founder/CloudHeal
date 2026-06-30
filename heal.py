@@ -5,8 +5,26 @@ import json
 import os
 import time
 import requests
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from botocore.exceptions import ClientError
 from datetime import datetime
+
+# --- PLATFORM BYPASS LAYER ---
+class HealthCheckServer(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"CloudHeal Web Worker Engine Active")
+
+def run_health_check_server():
+    # Automatically listens to Railway's assigned network port
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckServer)
+    print(f"🛰️ Platform Health Gateway active on port {port}")
+    server.serve_forever()
+# -----------------------------
 
 def load_configuration():
     try:
@@ -42,8 +60,6 @@ def send_telegram_alert(token, chat_id, message):
 def scan_and_heal():
     config_data = load_configuration()
     target_regions = config_data.get("target_regions", ["us-east-1"])
-    
-    # Cloud Patch: Automatically pulls from Railway secure variables first
     token = os.environ.get("TELEGRAM_TOKEN", config_data.get("telegram_token", ""))
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", config_data.get("telegram_chat_id", ""))
     csv_rows = []
@@ -113,7 +129,10 @@ def scan_and_heal():
 
 def main_automation_loop():
     print("🚀 CloudHeal Automation Core Activated: Engine is now permanently live.")
-    print("Press Ctrl + C in the terminal at any time to halt the engine.")
+    
+    # Spin up the background web health thread
+    web_thread = threading.Thread(target=run_health_check_server, daemon=True)
+    web_thread.start()
     
     while True:
         try:
@@ -126,6 +145,7 @@ def main_automation_loop():
 
 if __name__ == "__main__":
     main_automation_loop()
+
 
 
 
