@@ -165,7 +165,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 """
 
 if __name__ == "__main__":
-    listen_port = 5000
+    # Dynamically reads the hosting environment port variable or falls back to 5000 locally
+    listen_port = int(os.environ.get("PORT", 5000))
     server_instance = HTTPServer(("0.0.0.0", listen_port), MatrixEnterpriseEngine)
     print(f"🚀 CloudHeal Matrix Core Online at http://localhost:{listen_port}")
+    server_instance.serve_forever()
 
