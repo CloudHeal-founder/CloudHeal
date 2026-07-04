@@ -59,6 +59,20 @@
         }
         .nav a:hover {
             color: #e0e6ed;
+            text-decoration: none;
+        }
+        .nav .enterprise-link {
+            color: #00d4ff;
+            font-weight: 600;
+            border: 1px solid #00d4ff;
+            padding: 6px 16px;
+            border-radius: 20px;
+            transition: all 0.3s;
+        }
+        .nav .enterprise-link:hover {
+            background: #00d4ff;
+            color: #0a0e17;
+            text-decoration: none;
         }
 
         /* ─────────── Hero ─────────── */
@@ -99,6 +113,37 @@
             color: #e0e6ed;
         }
 
+        /* ─────────── Stats ─────────── */
+        .stats-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 20px;
+            margin: 40px 0;
+        }
+        .stat-card {
+            background: #111b26;
+            border: 1px solid #1e2a3a;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+        .stat-card .number {
+            font-size: 36px;
+            font-weight: 700;
+            color: #00d4ff;
+        }
+        .stat-card .label {
+            font-size: 14px;
+            color: #8ba0b8;
+            margin-top: 5px;
+        }
+        .stat-card.critical .number {
+            color: #ff4757;
+        }
+        .stat-card.fixed .number {
+            color: #2ed573;
+        }
+
         /* ─────────── Screenshot ─────────── */
         .screenshot {
             margin: 50px auto;
@@ -128,7 +173,7 @@
         }
         .feature-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 30px;
         }
         .feature-card {
@@ -154,6 +199,7 @@
         .feature-card p {
             color: #8ba0b8;
             font-size: 14px;
+            line-height: 1.5;
         }
 
         /* ─────────── Commands ─────────── */
@@ -189,6 +235,39 @@
             color: #5a6a7a;
         }
 
+        /* ─────────── CTA Banner ─────────── */
+        .cta-banner {
+            background: linear-gradient(135deg, #00d4ff, #7b2ffc);
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            margin: 40px 0;
+        }
+        .cta-banner h2 {
+            color: #0a0e17;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        .cta-banner p {
+            color: #0a0e17;
+            font-size: 18px;
+            opacity: 0.9;
+            margin-bottom: 20px;
+        }
+        .cta-banner .btn {
+            display: inline-block;
+            background: #0a0e17;
+            color: #fff;
+            padding: 12px 30px;
+            border-radius: 30px;
+            font-weight: 700;
+            text-decoration: none;
+        }
+        .cta-banner .btn:hover {
+            background: #1a1a2e;
+            text-decoration: none;
+        }
+
         /* ─────────── Footer ─────────── */
         footer {
             border-top: 1px solid #1e2a3a;
@@ -216,6 +295,15 @@
             .feature-grid {
                 grid-template-columns: 1fr;
             }
+            .cta-banner {
+                padding: 20px;
+            }
+            .cta-banner h2 {
+                font-size: 22px;
+            }
+            .stats-section {
+                grid-template-columns: 1fr 1fr;
+            }
         }
     </style>
 </head>
@@ -229,7 +317,8 @@
             <div class="nav">
                 <a href="#features">Features</a>
                 <a href="#commands">Get Started</a>
-                <a href="https://github.com" target="_blank">GitHub</a>
+                <a href="enterprise.html" class="enterprise-link">🚀 Enterprise</a>
+                <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank">GitHub</a>
             </div>
         </header>
 
@@ -249,7 +338,27 @@
             </div>
         </section>
 
-        <!-- Screenshot (REAL IMAGE) -->
+        <!-- Stats -->
+        <div class="stats-section">
+            <div class="stat-card">
+                <div class="number">2</div>
+                <div class="label">Total Scans</div>
+            </div>
+            <div class="stat-card critical">
+                <div class="number">0</div>
+                <div class="label">Critical Findings</div>
+            </div>
+            <div class="stat-card fixed">
+                <div class="number">0</div>
+                <div class="label">Auto-Fixed</div>
+            </div>
+            <div class="stat-card">
+                <div class="number">5</div>
+                <div class="label">Open Ports</div>
+            </div>
+        </div>
+
+        <!-- Screenshot -->
         <div class="screenshot">
             <img src="dashboard.png" alt="APCSS Dashboard" />
         </div>
@@ -261,22 +370,22 @@
                 <div class="feature-card">
                     <div class="icon">☁️</div>
                     <h3>Four‑Cloud Coverage</h3>
-                    <p>AWS · GCP · Azure · OCI – all in one command. No other open‑source tool does this.</p>
+                    <p>Scan AWS, GCP, Azure, and OCI – all in one command. No other open‑source tool covers all four major clouds.</p>
                 </div>
                 <div class="feature-card">
                     <div class="icon">🔗</div>
                     <h3>Attack Path Graph</h3>
-                    <p>Visualises exactly how an attacker would move from the Internet to your sensitive data.</p>
+                    <p>Visualises exactly how an attacker would move from the Internet to your sensitive data – step by step.</p>
                 </div>
                 <div class="feature-card">
                     <div class="icon">🛡️</div>
                     <h3>Auto‑Fix the Chain</h3>
-                    <p>Not just alerts – APCSS breaks the entire attack path by fixing S3, SGs, EC2, and IAM automatically.</p>
+                    <p>Not just alerts – APCSS breaks the entire attack path by fixing S3, Security Groups, EC2, and IAM automatically.</p>
                 </div>
                 <div class="feature-card">
                     <div class="icon">📊</div>
                     <h3>Live Dashboard</h3>
-                    <p>Real‑time monitoring with alerts, scan history, and visual attack paths – no extra setup.</p>
+                    <p>Real‑time monitoring with alerts, scan history, and visual attack paths – no extra setup required.</p>
                 </div>
                 <div class="feature-card">
                     <div class="icon">📄</div>
@@ -286,7 +395,7 @@
                 <div class="feature-card">
                     <div class="icon">🧠</div>
                     <h3>Drift Detection</h3>
-                    <p>Learns your environment and alerts you when something changes – like a new public bucket.</p>
+                    <p>Learns your environment and alerts you when something changes – like a new public bucket appearing.</p>
                 </div>
             </div>
         </section>
@@ -320,18 +429,29 @@
                 </div>
 
                 <div style="margin-top:20px;">
-                    <a href="#" style="display:inline-block; background:#00d4ff; color:#0a0e17; padding:12px 30px; border-radius:30px; font-weight:bold; text-decoration:none;">
-                        ⭐ Star on GitHub (coming soon)
+                    <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank" style="display:inline-block; background:#00d4ff; color:#0a0e17; padding:12px 30px; border-radius:30px; font-weight:bold; text-decoration:none;">
+                        ⭐ Star on GitHub
                     </a>
                 </div>
             </div>
         </section>
 
+        <!-- CTA Banner – Enterprise -->
+        <div class="cta-banner">
+            <h2>🚀 Need Enterprise-Grade Security?</h2>
+            <p>
+                Multi‑tenant dashboard · SSO · RBAC · Advanced Auto‑Remediation · 24/7 Support · Compliance Automation
+            </p>
+            <a href="enterprise.html" class="btn">Learn More →</a>
+        </div>
+
         <!-- Footer -->
         <footer>
             <p>
                 Built with ❤️ by <strong>APCSS</strong> – the world’s first four‑cloud, self‑healing security platform.<br />
-                <a href="#">GitHub</a> · <a href="#">Documentation</a> · <a href="#">Contact</a>
+                <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank">GitHub</a> ·
+                <a href="enterprise.html">Enterprise</a> ·
+                <a href="https://cloudheal-founder.github.io/CloudHeal/">Home</a>
             </p>
             <p style="margin-top:10px; font-size:13px; color:#3a4a5a;">
                 This tool is for authorised security testing only. Use responsibly.
