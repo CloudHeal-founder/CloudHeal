@@ -1,9 +1,0 @@
-{
-    "target_regions": ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"],
-    "sandbox_mode": true,
-    "local_endpoint": "http://localhost:4566",
-    "report_filename": "cloud_heal_report.csv",
-    "telegram_token": "8986528611:AAEI3p87vlPc7vBtueMCmyHiK3zZmE6hy7w",
-    "telegram_chat_id": "8520589919"
-}
-

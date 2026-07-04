@@ -1,0 +1,7 @@
+@"
+aws:123456789012
+gcp:my-project-123
+azure:sub-456
+oci:comp-789
+"@ | Out-File -FilePath accounts.txt
+ 
