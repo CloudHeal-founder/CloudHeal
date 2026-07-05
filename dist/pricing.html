@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>APCSS Pricing – Pro & Enterprise</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0e17;
+            color: #e0e6ed;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #1e2a3a;
+            padding-bottom: 20px;
+            margin-bottom: 40px;
+        }
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #00d4ff, #7b2ffc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .nav a {
+            color: #8ba0b8;
+            margin-left: 20px;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .nav a:hover {
+            color: #e0e6ed;
+        }
+        h1 {
+            font-size: 42px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #00d4ff, #7b2ffc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .subtitle {
+            font-size: 20px;
+            color: #8ba0b8;
+            margin-bottom: 40px;
+        }
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 20px;
+        }
+        .pricing-card {
+            background: #111b26;
+            border: 1px solid #1e2a3a;
+            border-radius: 16px;
+            padding: 30px;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .pricing-card:hover {
+            transform: translateY(-6px);
+            border-color: #00d4ff;
+        }
+        .pricing-card.popular {
+            border-color: #00d4ff;
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.1);
+        }
+        .pricing-card .plan-name {
+            font-size: 22px;
+            font-weight: 700;
+            color: #e0e6ed;
+        }
+        .pricing-card .price {
+            font-size: 48px;
+            font-weight: 700;
+            color: #00d4ff;
+            margin: 15px 0;
+        }
+        .pricing-card .price span {
+            font-size: 18px;
+            color: #8ba0b8;
+            font-weight: 400;
+        }
+        .pricing-card .description {
+            color: #8ba0b8;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        .pricing-card ul {
+            list-style: none;
+            padding: 0;
+            margin: 20px 0;
+        }
+        .pricing-card ul li {
+            padding: 10px 0;
+            border-bottom: 1px solid #1e2a3a;
+            color: #e0e6ed;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .pricing-card ul li::before {
+            content: "✅";
+            color: #2ed573;
+        }
+        .btn {
+            display: inline-block;
+            background: #00d4ff;
+            color: #0a0e17;
+            padding: 14px 30px;
+            border-radius: 30px;
+            font-weight: 700;
+            text-decoration: none;
+            margin-top: 10px;
+            width: 100%;
+            text-align: center;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #7b2ffc;
+            color: #fff;
+        }
+        .btn-outline {
+            background: transparent;
+            border: 2px solid #00d4ff;
+            color: #00d4ff;
+        }
+        .btn-outline:hover {
+            background: #00d4ff;
+            color: #0a0e17;
+        }
+        .badge {
+            background: #00d4ff;
+            color: #0a0e17;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 4px 12px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-bottom: 10px;
+        }
+        footer {
+            border-top: 1px solid #1e2a3a;
+            margin-top: 60px;
+            padding-top: 20px;
+            text-align: center;
+            color: #5a6a7a;
+            font-size: 14px;
+        }
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 28px;
+            }
+            .pricing-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+
+        <header>
+            <div class="logo">APCSS <span style="color:#8ba0b8; font-weight:300;">// Pricing</span></div>
+            <div class="nav">
+                <a href="https://cloudheal-founder.github.io/CloudHeal/">Home</a>
+                <a href="enterprise.html">Enterprise</a>
+                <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank">GitHub</a>
+            </div>
+        </header>
+
+        <h1>Choose Your Plan</h1>
+        <p class="subtitle">Start free. Scale with confidence. Pay only for what you need.</p>
+
+        <div class="pricing-grid">
+
+            <!-- FREE PLAN -->
+            <div class="pricing-card">
+                <div class="plan-name">Free</div>
+                <div class="price">$0 <span>/ forever</span></div>
+                <p class="description">Perfect for individuals and small teams getting started.</p>
+                <ul>
+                    <li>CLI scanner (all 4 clouds)</li>
+                    <li>Basic auto-fix</li>
+                    <li>Local Flask dashboard</li>
+                    <li>Open source</li>
+                    <li>Community support</li>
+                </ul>
+                <a href="https://github.com/CloudHeal-founder/CloudHeal" class="btn btn-outline" target="_blank">Get Started Free</a>
+            </div>
+
+            <!-- PRO PLAN (POPULAR) -->
+            <div class="pricing-card popular">
+                <span class="badge">🔥 MOST POPULAR</span>
+                <div class="plan-name">Pro</div>
+                <div class="price">$500 <span>/ month</span></div>
+                <p class="description">For growing teams that need multi-tenant visibility and approvals.</p>
+                <ul>
+                    <li>Everything in Free</li>
+                    <li>Multi-tenant dashboard</li>
+                    <li>Role-Based Access Control (RBAC)</li>
+                    <li>Slack/Teams approval workflow</li>
+                    <li>Branded compliance reports</li>
+                    <li>Email support within 24 hours</li>
+                    <li>Up to 10 cloud accounts</li>
+                </ul>
+                <a href="#contact" class="btn">Start Pro Trial</a>
+            </div>
+
+            <!-- ENTERPRISE PLAN -->
+            <div class="pricing-card">
+                <div class="plan-name">Enterprise</div>
+                <div class="price">Custom</div>
+                <p class="description">For large organisations with complex security needs.</p>
+                <ul>
+                    <li>Everything in Pro</li>
+                    <li>Unlimited cloud accounts</li>
+                    <li>24/7 support with SLA</li>
+                    <li>SOC2 & HIPAA add-ons</li>
+                    <li>Dedicated deployment</li>
+                    <li>Custom integrations</li>
+                    <li>Annual security reviews</li>
+                </ul>
+                <a href="#contact" class="btn btn-outline">Contact Sales</a>
+            </div>
+
+        </div>
+
+        <!-- CONTACT SECTION -->
+        <div id="contact" style="margin-top: 60px; background: #111b26; border-radius: 16px; padding: 40px; border: 1px solid #1e2a3a;">
+            <h2 style="font-size: 28px; color: #e0e6ed; margin-bottom: 10px;">📞 Talk to Sales</h2>
+            <p style="color: #8ba0b8; margin-bottom: 20px;">Need a custom plan? Have questions? Reach out and we'll get back to you within 24 hours.</p>
+            <form action="https://formspree.io/f/your-form-id" method="POST">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div>
+                        <label style="display: block; color: #e0e6ed; margin-bottom: 5px;">Full Name *</label>
+                        <input type="text" name="name" required style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #1e2a3a; background: #0a0e17; color: #e0e6ed;" />
+                    </div>
+                    <div>
+                        <label style="display: block; color: #e0e6ed; margin-bottom: 5px;">Work Email *</label>
+                        <input type="email" name="email" required style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #1e2a3a; background: #0a0e17; color: #e0e6ed;" />
+                    </div>
+                </div>
+                <div style="margin-top: 15px;">
+                    <label style="display: block; color: #e0e6ed; margin-bottom: 5px;">Company Name</label>
+                    <input type="text" name="company" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #1e2a3a; background: #0a0e17; color: #e0e6ed;" />
+                </div>
+                <div style="margin-top: 15px;">
+                    <label style="display: block; color: #e0e6ed; margin-bottom: 5px;">What cloud providers do you use?</label>
+                    <textarea name="message" rows="3" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #1e2a3a; background: #0a0e17; color: #e0e6ed;"></textarea>
+                </div>
+                <button type="submit" class="btn" style="margin-top: 20px; width: auto; padding: 14px 40px;">Send Inquiry</button>
+            </form>
+        </div>
+
+        <footer>
+            <p>APCSS – Automated Protection of Cloud Security System</p>
+            <p style="font-size: 12px; color: #3a4a5a;">This tool is for authorised security testing only. Use responsibly.</p>
+        </footer>
+
+    </div>
+
+</body>
+</html>
