@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aegis Enterprise – Cloud Security for Teams</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0e17;
+            color: #e0e6ed;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #1e2a3a;
+            padding-bottom: 20px;
+            margin-bottom: 40px;
+        }
+        .logo {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #00d4ff, #7b2ffc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .logo span {
+            font-weight: 300;
+            -webkit-text-fill-color: #8ba0b8;
+            font-size: 16px;
+        }
+        .nav a {
+            color: #8ba0b8;
+            margin-left: 20px;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .nav a:hover {
+            color: #e0e6ed;
+        }
+        h1 {
+            font-size: 42px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #00d4ff, #7b2ffc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        h2 {
+            font-size: 24px;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            color: #e0e6ed;
+            border-bottom: 1px solid #1e2a3a;
+            padding-bottom: 10px;
+        }
+        p {
+            color: #8ba0b8;
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .feature-card {
+            background: #111b26;
+            border: 1px solid #1e2a3a;
+            border-radius: 10px;
+            padding: 20px;
+        }
+        .feature-card h3 {
+            color: #00d4ff;
+            margin-bottom: 8px;
+        }
+        .feature-card p {
+            font-size: 14px;
+            color: #8ba0b8;
+        }
+        .pricing-box {
+            background: #111b26;
+            border: 1px solid #1e2a3a;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 30px 0;
+        }
+        .pricing-box .price {
+            font-size: 36px;
+            font-weight: 700;
+            color: #00d4ff;
+        }
+        .pricing-box .sub {
+            color: #8ba0b8;
+            font-size: 14px;
+        }
+        .btn {
+            display: inline-block;
+            background: #00d4ff;
+            color: #0a0e17;
+            padding: 14px 30px;
+            border-radius: 30px;
+            font-weight: 700;
+            text-decoration: none;
+            margin-top: 10px;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .btn:hover {
+            background: #7b2ffc;
+            color: #fff;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            color: #e0e6ed;
+            margin-bottom: 5px;
+        }
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #1e2a3a;
+            background: #0a0e17;
+            color: #e0e6ed;
+            font-size: 16px;
+        }
+        .form-group textarea {
+            height: 120px;
+        }
+        footer {
+            border-top: 1px solid #1e2a3a;
+            margin-top: 60px;
+            padding-top: 20px;
+            text-align: center;
+            color: #5a6a7a;
+            font-size: 14px;
+        }
+        @media (max-width: 600px) {
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+            h1 {
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+
+        <header>
+            <div class="logo">Aegis <span>// APCSS</span></div>
+            <div class="nav">
+                <a href="https://cloudheal-founder.github.io/CloudHeal/">Home</a>
+                <a href="#features">Features</a>
+                <a href="#pricing">Pricing</a>
+                <a href="#contact">Contact</a>
+            </div>
+        </header>
+
+        <h1>Enterprise-Grade Cloud Security.<br />Made Open Source.</h1>
+        <p>
+            Aegis Enterprise gives your team the power to scan AWS, GCP, Azure, and OCI – 
+            <strong>auto‑fix attack chains</strong>, generate compliance reports, and monitor everything 
+            from a single dashboard. Built for teams that need security at scale.
+        </p>
+
+        <h2 id="features">🔥 What You Get with Enterprise</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h3>☁️ Multi‑Tenant Dashboard</h3>
+                <p>Manage hundreds of cloud accounts across AWS, GCP, Azure, and OCI from one place.</p>
+            </div>
+            <div class="feature-card">
+                <h3>🛡️ Advanced Auto‑Remediation</h3>
+                <p>Auto‑fix S3, EC2, SGs, IAM, RDS, Lambda, and Kubernetes misconfigurations.</p>
+            </div>
+            <div class="feature-card">
+                <h3>📄 Compliance Automation</h3>
+                <p>Auto‑generate PCI‑DSS, HIPAA, and SOC2 reports on demand – auditor‑ready.</p>
+            </div>
+            <div class="feature-card">
+                <h3>🔗 SSO & RBAC</h3>
+                <p>Integrate with Okta, Azure AD, Google Workspace – control who sees what.</p>
+            </div>
+            <div class="feature-card">
+                <h3>📢 Slack & Jira Integration</h3>
+                <p>Send alerts to Slack, create Jira tickets automatically, and streamline workflows.</p>
+            </div>
+            <div class="feature-card">
+                <h3>🧠 24/7 Support</h3>
+                <p>Dedicated support team with guaranteed response times (SLA).</p>
+            </div>
+        </div>
+
+        <h2 id="pricing">💎 Simple, Transparent Pricing</h2>
+        <div class="pricing-box">
+            <div class="price">$500 <span style="font-size:16px; color:#8ba0b8;">/ month</span></div>
+            <p style="font-size:14px; color:#8ba0b8;">Starting at $500/month for up to 5 cloud accounts</p>
+            <ul style="color:#8ba0b8; margin:15px 0; padding-left:20px;">
+                <li>✅ Up to 5 accounts (any cloud)</li>
+                <li>✅ Multi‑tenant dashboard</li>
+                <li>✅ Auto‑remediation</li>
+                <li>✅ Compliance reports</li>
+                <li>✅ Email support within 24 hours</li>
+            </ul>
+            <a href="#contact" class="btn">Contact Sales</a>
+        </div>
+
+        <p style="font-size:14px; color:#5a6a7a;">
+            * Need more than 5 accounts? We offer custom enterprise plans starting at $2,000/month.
+        </p>
+
+        <h2 id="contact">📞 Book a Demo</h2>
+        <p>Fill in the form below – we'll schedule a 15‑minute call to show you how Aegis Enterprise can secure your cloud.</p>
+
+        <form action="https://formspree.io/f/your-form-id" method="POST">
+            <div class="form-group">
+                <label for="name">Full Name *</label>
+                <input type="text" id="name" name="name" required />
+            </div>
+            <div class="form-group">
+                <label for="email">Work Email *</label>
+                <input type="email" id="email" name="email" required />
+            </div>
+            <div class="form-group">
+                <label for="company">Company Name *</label>
+                <input type="text" id="company" name="company" required />
+            </div>
+            <div class="form-group">
+                <label for="message">What cloud providers do you use?</label>
+                <textarea id="message" name="message" placeholder="e.g., AWS, GCP, Azure, OCI – tell us about your setup"></textarea>
+            </div>
+            <button type="submit" class="btn">Send Inquiry</button>
+        </form>
+
+        <footer>
+            <p>Aegis – Automated Protection of Cloud Security Systems</p>
+            <p style="font-size:12px; color:#3a4a5a;">
+                This tool is for authorised security testing only. Use responsibly.
+            </p>
+        </footer>
+
+    </div>
+
+</body>
+</html>
