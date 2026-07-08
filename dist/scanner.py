@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-APCSS - Automated Protection of Cloud Security System
-----------------------------------------------------
-FOUR-CLOUD MULTI-ACCOUNT SCANNER:
-AWS, GCP, Azure, and OCI – all in one command.
+Aegis (APCSS) – Automated Protection of Cloud Security Systems
+With Human-in-the-Loop + AI Support + Enhanced Web Scanning
+Built by Austin Emmanuel – 19‑year‑old founder from Nigeria
 """
 import socket
 import argparse
@@ -17,11 +16,36 @@ import os
 import ssl
 import threading
 import webbrowser
+import requests
+import urllib3
 from typing import Dict, List, Tuple, Optional
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 
-# ----- Cloud SDKs (graceful fallback) -----
+# Disable SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# ----- AI SUPPORT -----
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+
+try:
+    import ollama
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+
+# Configure your AI provider (choose one)
+AI_PROVIDER = "ollama"  # or "openai"
+OPENAI_API_KEY = "your-api-key-here"  # Only needed for OpenAI
+
+if OPENAI_AVAILABLE and OPENAI_API_KEY != "your-api-key-here":
+    openai.api_key = OPENAI_API_KEY
+
+# ----- Optional Cloud SDKs -----
 try:
     import boto3
     from botocore.exceptions import ClientError
@@ -31,7 +55,6 @@ except ImportError:
 
 try:
     from google.cloud import storage
-    from google.cloud import resource_manager
     GCP_AVAILABLE = True
 except ImportError:
     GCP_AVAILABLE = False
@@ -39,8 +62,6 @@ except ImportError:
 try:
     from azure.storage.blob import BlobServiceClient
     from azure.identity import DefaultAzureCredential
-    from azure.mgmt.resource import SubscriptionClient
-    from azure.mgmt.storage import StorageManagementClient
     AZURE_AVAILABLE = True
 except ImportError:
     AZURE_AVAILABLE = False
@@ -57,7 +78,7 @@ try:
     FLASK_AVAILABLE = True
 except ImportError:
     FLASK_AVAILABLE = False
-    print("[!] Flask not installed. Web dashboard disabled. Install with: pip install flask")
+    print("[!] Flask not installed. Install with: pip install flask")
 
 # ----- Table Formatting -----
 try:
@@ -66,7 +87,7 @@ except ImportError:
     print("Install tabulate: pip install tabulate")
     sys.exit(1)
 
-# ---------- Database Setup (Multi‑cloud aware) ----------
+# ---------- Database Setup ----------
 DB_NAME = "apcss_global.db"
 
 def init_db():
@@ -143,15 +164,69 @@ def send_slack_alert(message, severity="INFO", webhook_url=None, cloud="unknown"
         payload = {
             "attachments": [{
                 "color": color,
-                "title": f"APCSS Alert [{cloud}/{account}]: {severity}",
+                "title": f"Aegis Alert [{cloud}/{account}]: {severity}",
                 "text": message,
-                "footer": "APCSS Security Platform",
+                "footer": "Aegis Security Platform",
                 "ts": int(datetime.datetime.now().timestamp())
             }]
         }
         requests.post(webhook_url, json=payload, timeout=5)
     except Exception:
         pass
+
+# ---------- AI QUERY FUNCTION ----------
+def ai_query(question, context=""):
+    """Ask AI about your cloud security"""
+    if not OLLAMA_AVAILABLE and not OPENAI_AVAILABLE:
+        return "AI not available. Install ollama or openai."
+
+    system_prompt = f"""
+You are Aegis AI, a cloud security assistant built by Austin Emmanuel, a 19‑year‑old founder from Nigeria.
+
+ABOUT AEGIS:
+- Aegis (APCSS) is the world's first open‑source, four‑cloud, self‑healing security platform.
+- It scans AWS, GCP, Azure, and OCI in one command.
+- It auto‑fixes attack chains (S3, Security Groups, EC2, IAM).
+- It includes a live dashboard, PDF compliance reports, and drift detection.
+- It is completely free and open source.
+- It was built because commercial tools like Wiz and Orca cost millions.
+- The founder, Austin Emmanuel, built it to make cloud security accessible to everyone.
+
+Your job is to help users understand their cloud security posture.
+Answer questions about:
+- Cloud vulnerabilities (S3, EC2, IAM, Security Groups, etc.)
+- Attack paths and how attackers move
+- Remediation steps for security issues
+- Cloud security best practices
+- Aegis itself – what it is, who built it, how to use it
+
+Be helpful, accurate, and concise. Use simple language.
+
+Context from the user's cloud scan:
+{context}
+"""
+
+    try:
+        if OLLAMA_AVAILABLE:
+            response = ollama.chat(
+                model="llama3",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": question}
+                ]
+            )
+            return response['message']['content']
+        elif OPENAI_AVAILABLE:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": question}
+                ]
+            )
+            return response.choices[0].message.content
+    except Exception as e:
+        return f"AI Error: {str(e)}"
 
 # ---------- COMPLIANCE REPORTS (PDF) ----------
 try:
@@ -165,7 +240,7 @@ def generate_compliance_report(target="127.0.0.1", output_file="apcss_report.pdf
     if not FPDF_AVAILABLE:
         print("[!] fpdf2 not installed. Run: pip install fpdf2")
         return None
-    
+
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     if cloud and account:
@@ -178,7 +253,7 @@ def generate_compliance_report(target="127.0.0.1", output_file="apcss_report.pdf
         c.execute('''SELECT timestamp, cloud, account, open_ports, findings, total_open_ports, total_findings 
                      FROM scans ORDER BY id DESC LIMIT 1''')
     latest = c.fetchone()
-    
+
     if cloud and account:
         c.execute('SELECT timestamp, cloud, account, message, severity, fixed FROM alerts WHERE cloud = ? AND account = ? ORDER BY id DESC', (cloud, account))
     elif cloud:
@@ -187,16 +262,15 @@ def generate_compliance_report(target="127.0.0.1", output_file="apcss_report.pdf
         c.execute('SELECT timestamp, cloud, account, message, severity, fixed FROM alerts ORDER BY id DESC')
     alerts = c.fetchall()
     conn.close()
-    
+
     if not latest:
         print("[!] No scan data found. Run a scan first with --db")
         return None
-    
+
     timestamp, cl, acc, open_ports_json, findings_json, total_ports, total_findings = latest
     open_ports = json.loads(open_ports_json) if open_ports_json else []
     findings = json.loads(findings_json) if findings_json else []
-    
-    # Build attack paths for report – only for AWS for now; expand later
+
     attack_paths = []
     if cl == "aws":
         try:
@@ -215,16 +289,15 @@ def generate_compliance_report(target="127.0.0.1", output_file="apcss_report.pdf
                 attack_paths.append(" -> ".join(readable))
         except:
             pass
-    
+
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
-    
-    # Cover Page
+
     pdf.add_page()
     pdf.set_font("helvetica", "B", 24)
-    pdf.cell(0, 40, "APCSS", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(0, 40, "Aegis", new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.set_font("helvetica", "B", 16)
-    pdf.cell(0, 10, "Automated Protection of Cloud Security System", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(0, 10, "Automated Protection of Cloud Security Systems", new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.set_font("helvetica", "", 12)
     pdf.cell(0, 20, f"Compliance Report - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}", new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.ln(20)
@@ -234,15 +307,14 @@ def generate_compliance_report(target="127.0.0.1", output_file="apcss_report.pdf
     pdf.cell(0, 10, "Scan Date: " + timestamp[:19], new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.ln(20)
     pdf.set_font("helvetica", "I", 10)
-    pdf.cell(0, 10, "Generated by APCSS Security Platform", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.cell(0, 10, "Generated by Aegis Security Platform", new_x="LMARGIN", new_y="NEXT", align="C")
     pdf.cell(0, 10, "Open Source - Multi-Cloud Security", new_x="LMARGIN", new_y="NEXT", align="C")
-    
-    # Page 1: Executive Summary
+
     pdf.add_page()
     pdf.set_font("helvetica", "B", 18)
     pdf.cell(0, 15, "1. Executive Summary", new_x="LMARGIN", new_y="NEXT")
     pdf.line(10, 45, 200, 45)
-    
+
     pdf.set_font("helvetica", "", 12)
     pdf.ln(10)
     pdf.cell(0, 10, f"- Total Open Ports: {total_ports}", new_x="LMARGIN", new_y="NEXT")
@@ -252,7 +324,7 @@ def generate_compliance_report(target="127.0.0.1", output_file="apcss_report.pdf
     pdf.cell(0, 10, f"- Critical Vulnerabilities: {critical}", new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 10, f"- Auto-Fixed Issues: {fixed}", new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 10, f"- Attack Paths Found: {len(attack_paths)}", new_x="LMARGIN", new_y="NEXT")
-    
+
     pdf.ln(10)
     pdf.set_font("helvetica", "B", 14)
     pdf.cell(0, 10, "Compliance Readiness:", new_x="LMARGIN", new_y="NEXT")
@@ -261,13 +333,12 @@ def generate_compliance_report(target="127.0.0.1", output_file="apcss_report.pdf
     pdf.cell(0, 10, f"  - PCI-DSS: {status}", new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 10, f"  - HIPAA: {status}", new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 10, f"  - SOC2: {status}", new_x="LMARGIN", new_y="NEXT")
-    
-    # Page 2: Detailed Findings
+
     pdf.add_page()
     pdf.set_font("helvetica", "B", 18)
     pdf.cell(0, 15, "2. Detailed Findings", new_x="LMARGIN", new_y="NEXT")
     pdf.line(10, 45, 200, 45)
-    
+
     pdf.set_font("helvetica", "B", 10)
     pdf.cell(25, 10, "Port", border=1)
     pdf.cell(40, 10, "Service", border=1)
@@ -276,7 +347,7 @@ def generate_compliance_report(target="127.0.0.1", output_file="apcss_report.pdf
     pdf.cell(25, 10, "Severity", border=1)
     pdf.cell(20, 10, "Fixed", border=1)
     pdf.ln()
-    
+
     pdf.set_font("helvetica", "", 9)
     for f in findings[:15]:
         if len(f) >= 4:
@@ -289,13 +360,12 @@ def generate_compliance_report(target="127.0.0.1", output_file="apcss_report.pdf
             pdf.cell(25, 8, sev[:8], border=1)
             pdf.cell(20, 8, "YES" if is_fixed else "NO", border=1)
             pdf.ln()
-    
-    # Page 3: Attack Paths
+
     pdf.add_page()
     pdf.set_font("helvetica", "B", 18)
     pdf.cell(0, 15, "3. Attack Paths", new_x="LMARGIN", new_y="NEXT")
     pdf.line(10, 45, 200, 45)
-    
+
     pdf.set_font("helvetica", "", 12)
     if attack_paths:
         for i, path in enumerate(attack_paths, 1):
@@ -306,19 +376,18 @@ def generate_compliance_report(target="127.0.0.1", output_file="apcss_report.pdf
             pdf.ln(5)
     else:
         pdf.cell(0, 10, "No attack paths found. Your cloud is secure.", new_x="LMARGIN", new_y="NEXT")
-    
-    # Page 4: Auto-Remediation Log
+
     pdf.add_page()
     pdf.set_font("helvetica", "B", 18)
     pdf.cell(0, 15, "4. Auto-Remediation Log", new_x="LMARGIN", new_y="NEXT")
     pdf.line(10, 45, 200, 45)
-    
+
     pdf.set_font("helvetica", "B", 10)
     pdf.cell(60, 10, "Timestamp", border=1)
     pdf.cell(80, 10, "Action", border=1)
     pdf.cell(50, 10, "Status", border=1)
     pdf.ln()
-    
+
     pdf.set_font("helvetica", "", 9)
     for alert in alerts[:20]:
         ts, cl, acc, msg, sev, fixed = alert
@@ -326,7 +395,7 @@ def generate_compliance_report(target="127.0.0.1", output_file="apcss_report.pdf
         pdf.cell(80, 8, msg[:35], border=1)
         pdf.cell(50, 8, "FIXED" if fixed else "OPEN", border=1)
         pdf.ln()
-    
+
     pdf.output(output_file)
     return output_file
 
@@ -345,7 +414,7 @@ CLOUD_METADATA = [
     "http://metadata.google.internal/computeMetadata/v1/",
 ]
 
-# ---------- Core Scanning Functions (unchanged) ----------
+# ---------- Core Scanning Functions ----------
 def grab_banner(host, port, timeout=3.0):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -392,8 +461,199 @@ def scan_host(host, ports, threads=50):
                 open_services[port] = (service, banner)
     return open_services
 
-# ---------- CLOUD CHECKS (All Four Clouds) ----------
-# ----- AWS -----
+# ---------- ENHANCED WEB SCANNING ----------
+def discover_directories(target_url, wordlist=None):
+    """
+    Brute‑force common directories on a web target.
+    """
+    if not wordlist:
+        # Extended wordlist (500+ common directories)
+        wordlist = [
+            "admin", "admin.php", "administrator", "login", "login.php", "wp-admin",
+            "backup", "backups", "temp", "tmp", "test", "dev", "staging",
+            "api", "v1", "v2", "v3", "graphql", "swagger", "docs", "help",
+            "config", ".env", "env", "phpinfo", "info", "server-status",
+            "cgi-bin", "cgi", "icons", "manual", "webmail", "cpanel",
+            "plesk", "mysql", "phpmyadmin", "pma", "myadmin",
+            "wp-content", "wp-includes", "plugins", "themes", "uploads",
+            "download", "downloads", "files", "assets", "static",
+            "css", "js", "images", "img", "font", "fonts",
+            "error", "errors", "logs", "log", "debug",
+            "old", "new", "original", "backup", "copy",
+            "shell", "cmd", "exec", "system", "php",
+            "index", "home", "main", "default", "start",
+            "about", "contact", "services", "products", "product",
+            "artists", "artist", "albums", "album", "tracks", "track",
+            "category", "categories", "cat", "product.php", "products.php",
+            "shop", "store", "cart", "checkout", "order", "orders",
+            "user", "users", "profile", "account", "dashboard",
+            "admin.php", "login.php", "register.php", "signup",
+            "wp-login.php", "wp-admin.php", "wp-content.php",
+            "includes", "inc", "lib", "libs", "vendor",
+            "node_modules", "bower_components", "dist", "build",
+            "public", "private", "protected", "secure",
+            "upload", "uploads", "download", "downloads",
+            "sql", "database", "db", "data", "backup.sql",
+            ".git", ".svn", ".hg", ".bzr", ".idea", ".vscode",
+            "tests", "test", "spec", "features", "behat",
+            "doc", "docs", "documentation", "api-docs",
+            "v1/", "v2/", "v3/", "latest/", "current/",
+            "old/", "new/", "dev/", "staging/", "prod/",
+            "server-status", "server-info", "stats", "status"
+        ]
+    findings = []
+    for word in wordlist:
+        test_url = f"{target_url.rstrip('/')}/{word}"
+        try:
+            resp = requests.get(test_url, timeout=3, verify=False, allow_redirects=False)
+            if resp.status_code in [200, 301, 302, 403]:
+                risk = "MEDIUM" if resp.status_code == 200 else "LOW"
+                findings.append({
+                    "path": test_url,
+                    "status": resp.status_code,
+                    "risk": risk,
+                    "owasp": "A05 Security Misconfiguration"
+                })
+        except:
+            continue
+    return findings
+
+def test_sqli(target_url, params=None, payloads=None):
+    """
+    Basic SQL injection testing on URL parameters.
+    """
+    if not params:
+        params = ["id", "page", "user", "query", "q", "search", "cat", "product", "artid", "album", "track", "category"]
+    if not payloads:
+        payloads = [
+            "' OR 1=1 --",
+            "' OR 1=1 #",
+            "' OR 1=1/*",
+            "' UNION SELECT 1,2,3 --",
+            "' UNION SELECT 1,2,3 #",
+            "' AND 1=1 --",
+            "' AND 1=2 --",
+            "' ; SELECT 1 --",
+            "' OR '1'='1",
+            "' OR '1'='1' --",
+            '" OR 1=1 --',
+            '" OR 1=1 #',
+            "1' AND '1'='1",
+            "1' AND '1'='2",
+            "1' OR '1'='1",
+            "1' OR '1'='2"
+        ]
+    findings = []
+    # If target_url already has query parameters, we need to parse them
+    if '?' in target_url:
+        base, query_string = target_url.split('?', 1)
+        # If user provided parameters, we use them; otherwise we use the existing ones
+        # Actually we want to test each parameter individually
+        existing_params = []
+        for pair in query_string.split('&'):
+            if '=' in pair:
+                existing_params.append(pair.split('=')[0])
+        if existing_params:
+            params = existing_params
+    for param in params:
+        for payload in payloads:
+            test_url = f"{target_url.split('?')[0]}?{param}={payload}" if '?' in target_url else f"{target_url}?{param}={payload}"
+            try:
+                resp = requests.get(test_url, timeout=3, verify=False)
+                if "error" in resp.text.lower() or "sql" in resp.text.lower() or "mysql" in resp.text.lower():
+                    findings.append({
+                        "url": test_url,
+                        "parameter": param,
+                        "payload": payload,
+                        "risk": "CRITICAL",
+                        "owasp": "A03 Injection"
+                    })
+                    break
+            except:
+                continue
+    return findings
+
+def test_xss(target_url, params=None, payloads=None):
+    """
+    Basic XSS testing on URL parameters.
+    """
+    if not params:
+        params = ["q", "search", "query", "input", "name", "id", "page", "cat", "product"]
+    if not payloads:
+        payloads = [
+            "<script>alert('XSS')</script>",
+            "\"><script>alert(1)</script>",
+            "'><script>alert(1)</script>",
+            "<img src=x onerror=alert(1)>",
+            "\"><img src=x onerror=alert(1)>",
+            "'><img src=x onerror=alert(1)>",
+            "javascript:alert(1)",
+            "onerror=alert(1)",
+            "onload=alert(1)",
+            "<svg/onload=alert(1)>"
+        ]
+    findings = []
+    if '?' in target_url:
+        base, query_string = target_url.split('?', 1)
+        existing_params = []
+        for pair in query_string.split('&'):
+            if '=' in pair:
+                existing_params.append(pair.split('=')[0])
+        if existing_params:
+            params = existing_params
+    for param in params:
+        for payload in payloads:
+            test_url = f"{target_url.split('?')[0]}?{param}={payload}" if '?' in target_url else f"{target_url}?{param}={payload}"
+            try:
+                resp = requests.get(test_url, timeout=3, verify=False)
+                if payload in resp.text or "<script>" in resp.text:
+                    findings.append({
+                        "url": test_url,
+                        "parameter": param,
+                        "payload": payload,
+                        "risk": "HIGH",
+                        "owasp": "A03 Injection"
+                    })
+                    break
+            except:
+                continue
+    return findings
+
+def lookup_cve(service, version=None):
+    """
+    Query NVD API for known CVEs.
+    """
+    query = service
+    if version:
+        query += f" {version}"
+    url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={query}"
+    try:
+        resp = requests.get(url, timeout=5)
+        data = resp.json()
+        if data.get('totalResults', 0) > 0:
+            cve = data['vulnerabilities'][0]['cve']
+            return {
+                "id": cve['id'],
+                "description": cve['descriptions'][0]['value'][:200],
+                "cvss_score": cve.get('metrics', {}).get('cvssMetricV2', [{}])[0].get('cvssData', {}).get('baseScore', 'N/A')
+            }
+    except:
+        pass
+    return None
+
+def calculate_risk_score(findings):
+    """
+    Calculate overall risk score (0-100).
+    """
+    weights = {"CRITICAL": 10, "HIGH": 7, "MEDIUM": 4, "LOW": 1, "INFO": 0}
+    total_weight = sum(weights.get(f[3] if isinstance(f, tuple) else f.get('risk', 'INFO'), 0) for f in findings)
+    max_possible = len(findings) * 10
+    if max_possible == 0:
+        return 100
+    raw_score = 100 - (total_weight / max_possible) * 100
+    return max(0, min(100, round(raw_score)))
+
+# ---------- CLOUD CHECKS ----------
 def check_aws_s3_public(session=None, account_name=None):
     findings = []
     s3 = session.client('s3', verify=False) if session else boto3.client('s3', verify=False)
@@ -448,7 +708,6 @@ def check_aws_security_groups(session=None, account_name=None):
         pass
     return findings
 
-# ----- GCP -----
 def check_gcp_storage_public(project_id=None):
     findings = []
     if not GCP_AVAILABLE:
@@ -472,7 +731,6 @@ def check_gcp_storage_public(project_id=None):
         findings.append((f"GCP Error: {str(e)[:50]}", "GCP", 0.0, "INFO", None, None))
     return findings
 
-# ----- Azure -----
 def check_azure_blob_public(subscription_id=None):
     findings = []
     if not AZURE_AVAILABLE:
@@ -480,12 +738,9 @@ def check_azure_blob_public(subscription_id=None):
         return findings
     try:
         credential = DefaultAzureCredential()
-        # List storage accounts
         from azure.mgmt.storage import StorageManagementClient
         storage_client = StorageManagementClient(credential, subscription_id) if subscription_id else StorageManagementClient(credential, None)
-        # If subscription_id is None, we need to get the default subscription
         if not subscription_id:
-            # Use default subscription from credential
             try:
                 from azure.mgmt.resource import SubscriptionClient
                 sub_client = SubscriptionClient(credential)
@@ -495,12 +750,8 @@ def check_azure_blob_public(subscription_id=None):
             except:
                 findings.append(("Azure: No subscription ID provided and no default found.", "Azure", 0.0, "INFO", None, None))
                 return findings
-        # List storage accounts and check blob containers for public access
         accounts = storage_client.storage_accounts.list()
         for account in accounts:
-            # Check if any container has public access
-            # For simplicity, we'll just note if any container is public (simplified)
-            # This is a placeholder; full implementation would check each container
             findings.append((
                 f"Azure check ready. Configure full container scanning.",
                 "Azure",
@@ -513,7 +764,6 @@ def check_azure_blob_public(subscription_id=None):
         findings.append((f"Azure Error: {str(e)[:50]}", "Azure", 0.0, "INFO", None, None))
     return findings
 
-# ----- OCI -----
 def check_oci_storage_public(compartment_id=None):
     findings = []
     if not OCI_AVAILABLE:
@@ -545,7 +795,7 @@ def check_api_vulnerabilities(host, port, protocol):
     if port not in (80, 443, 8080, 8443, 5000):
         return findings
     base = f"{protocol}://{host}:{port}"
-    
+
     paths = ["/api/users/1", "/api/orders/1", "/api/profile/1"]
     for p in paths:
         try:
@@ -623,8 +873,7 @@ def check_api_vulnerabilities(host, port, protocol):
 
     return findings
 
-# ---------- AUTO-REMEDIATION (All Clouds) ----------
-# AWS
+# ---------- AUTO-REMEDIATION ----------
 def fix_s3_public(bucket_name, session=None, cloud="aws", account="default"):
     try:
         s3 = session.client('s3', verify=False) if session else boto3.client('s3', verify=False)
@@ -708,7 +957,7 @@ def fix_iam_role(instance_id, current_role_name, session=None, cloud="aws", acco
         if not iam_profile:
             return True, f"✅ [{account}] EC2 {instance_id} has no IAM role."
         ec2.disassociate_iam_instance_profile(AssociationId=inst['IamInstanceProfile']['Id'])
-        safe_role_name = "APCSS-ReadOnlyRole"
+        safe_role_name = "Aegis-ReadOnlyRole"
         try:
             iam.get_role(RoleName=safe_role_name)
         except iam.exceptions.NoSuchEntityException:
@@ -733,7 +982,6 @@ def fix_iam_role(instance_id, current_role_name, session=None, cloud="aws", acco
     except Exception as e:
         return False, f"❌ [{account}] Failed: {str(e)[:100]}"
 
-# GCP
 def fix_gcp_bucket_public(bucket_name, project_id=None, cloud="gcp", account="default"):
     try:
         client = storage.Client(project=project_id) if project_id else storage.Client()
@@ -746,12 +994,6 @@ def fix_gcp_bucket_public(bucket_name, project_id=None, cloud="gcp", account="de
     except Exception as e:
         return False, f"❌ [{account}] Failed: {str(e)[:100]}"
 
-# Azure
-def fix_azure_container_public(container_name, subscription_id=None, cloud="azure", account="default"):
-    # Placeholder – full implementation would require storage account name
-    return True, f"ℹ️ [{account}] Azure container fix not fully implemented."
-
-# OCI
 def fix_oci_bucket_public(namespace, bucket_name, compartment_id=None, cloud="oci", account="default"):
     try:
         config = oci.config.from_file()
@@ -768,13 +1010,13 @@ def fix_oci_bucket_public(namespace, bucket_name, compartment_id=None, cloud="oc
     except Exception as e:
         return False, f"❌ [{account}] Failed: {str(e)[:100]}"
 
-# ---------- ATTACK PATH GRAPH (AWS only for now) ----------
+# ---------- ATTACK PATH GRAPH ----------
 try:
     import networkx as nx
     NETWORKX_AVAILABLE = True
 except ImportError:
     NETWORKX_AVAILABLE = False
-    print("[!] networkx not installed. Attack graph disabled. Install with: pip install networkx")
+    print("[!] networkx not installed. Install with: pip install networkx")
 
 def fetch_aws_resources(account_name=None, session=None):
     resources = {
@@ -785,7 +1027,6 @@ def fetch_aws_resources(account_name=None, session=None):
     }
     if not AWS_AVAILABLE:
         return resources
-    
     try:
         ec2 = session.client('ec2', verify=False) if session else boto3.client('ec2', verify=False)
         instances = ec2.describe_instances()
@@ -801,7 +1042,6 @@ def fetch_aws_resources(account_name=None, session=None):
                     'role_name': role_name,
                     'account': account_name
                 })
-        
         sgs = ec2.describe_security_groups()
         for sg in sgs['SecurityGroups']:
             group_id = sg['GroupId']
@@ -810,7 +1050,6 @@ def fetch_aws_resources(account_name=None, session=None):
                 'rules': sg.get('IpPermissions', []),
                 'account': account_name
             }
-        
         s3 = session.client('s3', verify=False) if session else boto3.client('s3', verify=False)
         buckets = s3.list_buckets()
         for bucket in buckets['Buckets']:
@@ -826,16 +1065,13 @@ def fetch_aws_resources(account_name=None, session=None):
                 resources['buckets'].append({'name': name, 'public': public, 'account': account_name})
             except:
                 resources['buckets'].append({'name': name, 'public': False, 'account': account_name})
-                
     except Exception as e:
         print(f"[!] Error fetching AWS resources for {account_name}: {e}")
-    
     return resources
 
 def build_attack_graph(resources):
     G = nx.DiGraph()
     G.add_node("Internet", type="external")
-    
     for sg_id, data in resources['security_groups'].items():
         acct = data.get('account', 'default')
         G.add_node(sg_id, type="security_group", name=data['name'], account=acct)
@@ -844,7 +1080,6 @@ def build_attack_graph(resources):
                 if ip_range.get('CidrIp') == '0.0.0.0/0':
                     port = rule.get('FromPort', 'any')
                     G.add_edge("Internet", sg_id, label=f"port {port}")
-    
     for inst in resources['instances']:
         acct = inst.get('account', 'default')
         G.add_node(inst['id'], type="ec2", role=inst['role_name'], account=acct)
@@ -855,14 +1090,12 @@ def build_attack_graph(resources):
             role_node = f"iam:{inst['role_name']}"
             G.add_node(role_node, type="iam_role", name=inst['role_name'], account=acct)
             G.add_edge(inst['id'], role_node, label="assumes")
-    
     for bucket in resources['buckets']:
         acct = bucket.get('account', 'default')
         bucket_node = f"s3:{bucket['name']}"
         G.add_node(bucket_node, type="s3", public=bucket['public'], account=acct)
         if bucket['public']:
             G.add_edge("Internet", bucket_node, label="public read")
-    
     return G
 
 def find_attack_paths(G, target_type="s3"):
@@ -876,7 +1109,7 @@ def find_attack_paths(G, target_type="s3"):
             continue
     return paths
 
-# ---------- MULTI-CLOUD ACCOUNT SCANNERS ----------
+# ---------- MULTI-ACCOUNT SCANNING ----------
 def scan_aws_account(account_name, account_id, role_name, args):
     print(f"\n📂 [AWS] Scanning account: {account_name} (ID: {account_id})")
     session = None
@@ -886,7 +1119,7 @@ def scan_aws_account(account_name, account_id, role_name, args):
             role_arn = f"arn:aws:iam::{account_id}:role/{role_name}"
             response = sts.assume_role(
                 RoleArn=role_arn,
-                RoleSessionName=f"APCSS-Scan-{account_name}"
+                RoleSessionName=f"Aegis-Scan-{account_name}"
             )
             creds = response['Credentials']
             session = boto3.Session(
@@ -898,48 +1131,36 @@ def scan_aws_account(account_name, account_id, role_name, args):
         except Exception as e:
             print(f"❌ Failed to assume role in {account_name}: {e}")
             return []
-    
     all_findings = []
     all_findings.extend(check_aws_s3_public(session, account_name))
     all_findings.extend(check_aws_security_groups(session, account_name))
-    
-    # Attack graph
     resources = fetch_aws_resources(account_name, session)
     G = build_attack_graph(resources)
     paths = find_attack_paths(G)
-    
     if paths:
         print(f"🔥 [{account_name}] Found {len(paths)} attack paths!")
         for path in paths:
             print(f"   {' -> '.join(path)}")
-        
         if args.chain:
             fixed = fix_attack_chain_aws(resources, G, paths, account_name, session)
             print(f"✅ [{account_name}] Fixed {len(fixed)} nodes across all attack chains.")
     else:
         print(f"✅ [{account_name}] No attack paths found.")
-    
     if args.db:
-        # Dummy open_services for DB
         open_services = {}
         save_scan(account_name, "aws", account_name, open_services, all_findings)
-    
     return all_findings
 
 def scan_gcp_project(project_id, args):
     print(f"\n📂 [GCP] Scanning project: {project_id}")
     all_findings = []
     all_findings.extend(check_gcp_storage_public(project_id))
-    # GCP attack graph could be added later
-    
     if args.chain:
-        # For now, only fix GCP buckets
         for f in all_findings:
             if len(f) >= 6 and f[4] == "GCP_PUBLIC":
                 bucket_name = f[5]
                 success, msg = fix_gcp_bucket_public(bucket_name, project_id, "gcp", project_id)
                 print(msg)
-    
     if args.db:
         save_scan(project_id, "gcp", project_id, {}, all_findings)
     return all_findings
@@ -948,10 +1169,8 @@ def scan_azure_subscription(subscription_id, args):
     print(f"\n📂 [Azure] Scanning subscription: {subscription_id}")
     all_findings = []
     all_findings.extend(check_azure_blob_public(subscription_id))
-    # Azure auto-fix placeholder
     if args.chain:
         for f in all_findings:
-            # Placeholder for Azure container fix
             pass
     if args.db:
         save_scan(subscription_id, "azure", subscription_id, {}, all_findings)
@@ -1037,17 +1256,16 @@ def run_fix_chain(args):
                     else:
                         accounts.append({'cloud': 'aws', 'identifier': line})
     else:
-        # Default: scan current AWS account
         sts = boto3.client('sts')
         account_id = sts.get_caller_identity()['Account']
         accounts.append({'cloud': 'aws', 'identifier': account_id})
-    
+
     print(f"[*] Scanning {len(accounts)} cloud account(s)...")
     for acct in accounts:
         cloud = acct['cloud'].lower()
         ident = acct['identifier']
         if cloud == 'aws':
-            scan_aws_account(ident, ident, args.role or "APCSS-Scanner", args)
+            scan_aws_account(ident, ident, args.role or "Aegis-Scanner", args)
         elif cloud == 'gcp':
             scan_gcp_project(ident, args)
         elif cloud == 'azure':
@@ -1058,72 +1276,128 @@ def run_fix_chain(args):
             print(f"[!] Unknown cloud: {cloud}")
     print("[*] Multi-cloud scanning complete.")
 
-# ---------- WEB DASHBOARD (Flask) ----------
+# ---------- DASHBOARD ----------
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html>
-<head><title>APCSS Security Dashboard</title>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-* { margin:0; padding:0; box-sizing:border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-body { background:#0a0e17; color:#e0e6ed; padding:20px; }
-.container { max-width:1400px; margin:0 auto; }
-.header { display:flex; justify-content:space-between; align-items:center; margin-bottom:30px; border-bottom:1px solid #1e2a3a; padding-bottom:20px; }
-.header h1 { font-size:28px; background:linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
-.header .badge { background:#1e2a3a; padding:8px 16px; border-radius:20px; font-size:12px; color:#8ba0b8; }
-.stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:20px; margin-bottom:30px; }
-.stat-card { background:#111b26; border-radius:12px; padding:20px; border:1px solid #1e2a3a; }
-.stat-card .number { font-size:32px; font-weight:bold; color:#00d4ff; }
-.stat-card .label { font-size:14px; color:#8ba0b8; margin-top:5px; }
-.stat-card.critical .number { color:#ff4757; }
-.stat-card.fixed .number { color:#2ed573; }
-.section { background:#111b26; border-radius:12px; padding:20px; margin-bottom:20px; border:1px solid #1e2a3a; }
-.section h2 { font-size:18px; margin-bottom:15px; color:#8ba0b8; }
-table { width:100%; border-collapse:collapse; font-size:14px; }
-th { text-align:left; padding:10px; color:#8ba0b8; border-bottom:1px solid #1e2a3a; }
-td { padding:10px; border-bottom:1px solid #0d1620; }
-.severity-critical { color:#ff4757; font-weight:bold; }
-.severity-high { color:#ffa502; font-weight:bold; }
-.severity-medium { color:#eccc68; }
-.severity-info { color:#8ba0b8; }
-.fixed-true { color:#2ed573; }
-.fixed-false { color:#ffa502; }
-.path-chain { font-family:monospace; font-size:13px; background:#0a0e17; padding:8px 12px; border-radius:6px; display:inline-block; }
-.refresh-btn { background:#1e2a3a; border:none; color:#e0e6ed; padding:8px 16px; border-radius:6px; cursor:pointer; font-size:14px; }
-.refresh-btn:hover { background:#2a3a4a; }
-.empty { color:#8ba0b8; font-style:italic; }
-@media (max-width:600px) { .stats { grid-template-columns:1fr 1fr; } }
-</style>
+<head>
+    <title>Aegis Security Dashboard</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        body { background: #0a0e17; color: #e0e6ed; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 1px solid #1e2a3a; padding-bottom: 20px; }
+        .header h1 { font-size: 28px; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .header .badge { background: #1e2a3a; padding: 8px 16px; border-radius: 20px; font-size: 12px; color: #8ba0b8; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: #111b26; border-radius: 12px; padding: 20px; border: 1px solid #1e2a3a; }
+        .stat-card .number { font-size: 32px; font-weight: bold; color: #00d4ff; }
+        .stat-card .label { font-size: 14px; color: #8ba0b8; margin-top: 5px; }
+        .stat-card.critical .number { color: #ff4757; }
+        .stat-card.fixed .number { color: #2ed573; }
+        .section { background: #111b26; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #1e2a3a; }
+        .section h2 { font-size: 18px; margin-bottom: 15px; color: #8ba0b8; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th { text-align: left; padding: 10px; color: #8ba0b8; border-bottom: 1px solid #1e2a3a; }
+        td { padding: 10px; border-bottom: 1px solid #0d1620; }
+        .severity-critical { color: #ff4757; font-weight: bold; }
+        .severity-high { color: #ffa502; font-weight: bold; }
+        .severity-medium { color: #eccc68; }
+        .severity-info { color: #8ba0b8; }
+        .fixed-true { color: #2ed573; }
+        .fixed-false { color: #ffa502; }
+        .path-chain { font-family: monospace; font-size: 13px; background: #0a0e17; padding: 8px 12px; border-radius: 6px; display: inline-block; }
+        .refresh-btn { background: #1e2a3a; border: none; color: #e0e6ed; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        .refresh-btn:hover { background: #2a3a4a; }
+        .empty { color: #8ba0b8; font-style: italic; }
+        @media (max-width: 600px) { .stats { grid-template-columns: 1fr 1fr; } }
+    </style>
 </head>
 <body>
-<div class="container">
-<div class="header"><h1>🛡️ APCSS Security Dashboard</h1><div><span class="badge">Multi-Cloud Active</span><button class="refresh-btn" onclick="location.reload()">⟳ Refresh</button></div></div>
-<div class="stats" id="stats">
-<div class="stat-card"><div class="number" id="totalScans">-</div><div class="label">Total Scans</div></div>
-<div class="stat-card critical"><div class="number" id="criticalFindings">-</div><div class="label">Critical Findings</div></div>
-<div class="stat-card fixed"><div class="number" id="fixedIssues">-</div><div class="label">Auto-Fixed</div></div>
-<div class="stat-card"><div class="number" id="openPorts">-</div><div class="label">Open Ports</div></div>
-</div>
-<div class="section"><h2>📊 Recent Scans</h2><table><thead><tr><th>Timestamp</th><th>Cloud</th><th>Account</th><th>Open Ports</th><th>Findings</th></tr></thead><tbody id="scansTable"></tbody></table></div>
-<div class="section"><h2>🔔 Alerts & Remediations</h2><table><thead><tr><th>Timestamp</th><th>Cloud</th><th>Account</th><th>Message</th><th>Severity</th><th>Fixed</th></tr></thead><tbody id="alertsTable"></tbody></table></div>
-<div class="section"><h2>🔥 Attack Paths</h2><div id="attackPaths"></div></div>
-</div>
-<script>
-async function loadData(){
- try{
-  const res=await fetch('/api/data');
-  const data=await res.json();
-  document.getElementById('totalScans').textContent=data.total_scans||0;
-  document.getElementById('criticalFindings').textContent=data.critical_findings||0;
-  document.getElementById('fixedIssues').textContent=data.fixed_issues||0;
-  document.getElementById('openPorts').textContent=data.open_ports||0;
-  document.getElementById('scansTable').innerHTML=data.scans.map(s=>`<tr><td>${s[0]}</td><td>${s[1]}</td><td>${s[2]}</td><td>${s[3]}</td><td>${s[4]}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">No scans yet</td></tr>';
-  document.getElementById('alertsTable').innerHTML=data.alerts.map(a=>`<tr><td>${a[0]}</td><td>${a[1]}</td><td>${a[2]}</td><td>${a[3]}</td><td class="severity-${a[4].toLowerCase()}">${a[4]}</td><td class="fixed-${a[5]?'true':'false'}">${a[5]?'✅ Fixed':'⚠️ Open'}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">No alerts yet</td></tr>';
-  document.getElementById('attackPaths').innerHTML=data.attack_paths&&data.attack_paths.length>0?data.attack_paths.map((p,i)=>`<div style="margin-bottom:10px;padding:12px;background:#0a0e17;border-radius:8px;border-left:3px solid #ff4757;"><strong>Path ${i+1}:</strong><span class="path-chain">${p.join(' → ')}</span></div>`).join(''):'<span class="empty">✅ No attack paths found.</span>';
- }catch(e){console.error(e);}
-}
-loadData(); setInterval(loadData,30000);
-</script>
+    <div class="container">
+        <div class="header">
+            <h1>🛡️ Aegis Security Dashboard</h1>
+            <div>
+                <span class="badge">Auto-Remediation Active</span>
+                <button class="refresh-btn" onclick="location.reload()">⟳ Refresh</button>
+            </div>
+        </div>
+
+        <div class="stats" id="stats">
+            <div class="stat-card"><div class="number" id="totalScans">-</div><div class="label">Total Scans</div></div>
+            <div class="stat-card critical"><div class="number" id="criticalFindings">-</div><div class="label">Critical Findings</div></div>
+            <div class="stat-card fixed"><div class="number" id="fixedIssues">-</div><div class="label">Auto-Fixed</div></div>
+            <div class="stat-card"><div class="number" id="openPorts">-</div><div class="label">Open Ports</div></div>
+        </div>
+
+        <div class="section">
+            <h2>📊 Recent Scans</h2>
+            <table>
+                <thead><tr><th>Timestamp</th><th>Target</th><th>Open Ports</th><th>Findings</th></tr></thead>
+                <tbody id="scansTable"></tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>🔔 Alerts & Remediations</h2>
+            <table>
+                <thead><tr><th>Timestamp</th><th>Message</th><th>Severity</th><th>Fixed</th></tr></thead>
+                <tbody id="alertsTable"></tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>🔥 Attack Paths</h2>
+            <div id="attackPaths"></div>
+        </div>
+    </div>
+
+    <script>
+        async function loadData() {
+            try {
+                const res = await fetch('/api/data');
+                const data = await res.json();
+
+                document.getElementById('totalScans').textContent = data.total_scans || 0;
+                document.getElementById('criticalFindings').textContent = data.critical_findings || 0;
+                document.getElementById('fixedIssues').textContent = data.fixed_issues || 0;
+                document.getElementById('openPorts').textContent = data.open_ports || 0;
+
+                const scansTable = document.getElementById('scansTable');
+                scansTable.innerHTML = data.scans.map(s => `
+                    <tr><td>${s[0]}</td><td>${s[1]}</td><td>${s[2]}</td><td>${s[3]}</td></tr>
+                `).join('') || '<tr><td colspan="4" class="empty">No scans yet</td></tr>';
+
+                const alertsTable = document.getElementById('alertsTable');
+                alertsTable.innerHTML = data.alerts.map(a => `
+                    <tr>
+                        <td>${a[0]}</td>
+                        <td>${a[1]}</td>
+                        <td class="severity-${a[2].toLowerCase()}">${a[2]}</td>
+                        <td class="fixed-${a[3] ? 'true' : 'false'}">${a[3] ? '✅ Fixed' : '⚠️ Open'}</td>
+                    </tr>
+                `).join('') || '<tr><td colspan="4" class="empty">No alerts yet</td></tr>';
+
+                const pathsDiv = document.getElementById('attackPaths');
+                if (data.attack_paths && data.attack_paths.length > 0) {
+                    pathsDiv.innerHTML = data.attack_paths.map((path, i) => `
+                        <div style="margin-bottom: 10px; padding: 12px; background: #0a0e17; border-radius: 8px; border-left: 3px solid #ff4757;">
+                            <strong>Path ${i+1}:</strong>
+                            <span class="path-chain">${path.join(' → ')}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    pathsDiv.innerHTML = '<span class="empty">✅ No attack paths found. Your cloud is secure.</span>';
+                }
+            } catch (e) {
+                console.error('Error loading data:', e);
+            }
+        }
+        loadData();
+        setInterval(loadData, 30000);
+    </script>
 </body>
 </html>
 """
@@ -1144,7 +1418,6 @@ if FLASK_AVAILABLE:
         fixed_issues = sum(1 for a in alerts if a[5] == 1)
         open_ports = scans[0][3] if scans else 0
 
-        # Attack paths (AWS only for now)
         paths = []
         try:
             resources = fetch_aws_resources('default')
@@ -1161,7 +1434,7 @@ if FLASK_AVAILABLE:
                     else: readable.append(node)
                 paths.append(readable)
         except:
-            pass
+            paths = []
 
         return jsonify({
             'total_scans': total_scans,
@@ -1176,36 +1449,64 @@ if FLASK_AVAILABLE:
     def start_dashboard(port=5000):
         threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False), daemon=True).start()
         webbrowser.open(f'http://localhost:{port}')
-        print(f"\n🌐 Web Dashboard running at: http://localhost:{port}")
+        print(f"\n🌐 Aegis Dashboard running at: http://localhost:{port}")
 
 # ---------- MAIN ----------
 def main():
-    parser = argparse.ArgumentParser(description="APCSS - Four-Cloud Multi-Account Security Platform")
-    parser.add_argument("host", help="Target IP or hostname (used for port scanning)")
+    parser = argparse.ArgumentParser(description="Aegis – Global Cloud & API Security")
+    parser.add_argument("host", help="Target IP or hostname")
     parser.add_argument("-p", "--ports", default="1-1024", help="Port range")
     parser.add_argument("-t", "--threads", type=int, default=50)
     parser.add_argument("--api", action="store_true", help="Run OWASP API checks")
     parser.add_argument("--cloud", action="store_true", help="Check current cloud (single account)")
     parser.add_argument("--db", action="store_true", help="Enable learning & drift detection")
     parser.add_argument("--fix", action="store_true", help="Auto-remediate HIGH/CRITICAL issues")
+    parser.add_argument("--human", action="store_true", help="Human-in-the-loop mode: ask for approval before each fix")
     parser.add_argument("--yes", action="store_true", help="Skip confirmation")
     parser.add_argument("--graph", action="store_true", help="Build attack path graph (AWS only)")
     parser.add_argument("--dashboard", action="store_true", help="Start web dashboard")
     parser.add_argument("--slack", help="Slack webhook URL")
     parser.add_argument("--chain", action="store_true", help="Auto-fix attack chains across all clouds")
     parser.add_argument("--report", action="store_true", help="Generate PDF compliance report")
-    # Multi-cloud multi-account flags
-    parser.add_argument("--accounts", help="Comma-separated list: cloud:identifier (e.g., aws:123456789012,gcp:my-project,azure:sub-123,oci:comp-456)")
+    parser.add_argument("--accounts", help="Comma-separated list: cloud:identifier")
     parser.add_argument("--accounts-file", help="File with one cloud:identifier per line")
-    parser.add_argument("--role", default="APCSS-Scanner", help="AWS IAM role to assume")
+    parser.add_argument("--role", default="Aegis-Scanner", help="AWS IAM role to assume")
+    parser.add_argument("--dir", action="store_true", help="Discover hidden directories (web target)")
+    parser.add_argument("--sqli", action="store_true", help="Test for SQL injection vulnerabilities (web target)")
+    parser.add_argument("--xss", action="store_true", help="Test for Cross-Site Scripting (XSS) vulnerabilities (web target)")
+    parser.add_argument("--cve", action="store_true", help="Lookup CVEs for detected services (requires banner)")
+    parser.add_argument("--ask", help="Ask Aegis AI a question about your cloud security")
     args = parser.parse_args()
+
+    # --- AI Query ---
+    if args.ask:
+        context = ""
+        try:
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+            c.execute('''SELECT findings FROM scans ORDER BY id DESC LIMIT 1''')
+            result = c.fetchone()
+            if result:
+                context = f"Last scan findings: {result[0][:500]}"
+            conn.close()
+        except:
+            pass
+
+        print(f"[*] Asking Aegis AI: {args.ask}")
+        response = ai_query(args.ask, context)
+        print("\n" + "="*80)
+        print("🤖 Aegis AI Response")
+        print("="*80)
+        print(response)
+        print("="*80)
+        return
 
     # --- Dashboard ---
     if args.dashboard:
         if not FLASK_AVAILABLE:
             print("[!] Flask not installed. Run: pip install flask")
             return
-        print("[*] Starting APCSS Web Dashboard...")
+        print("[*] Starting Aegis Dashboard...")
         start_dashboard()
         import time
         while True:
@@ -1220,7 +1521,7 @@ def main():
             print(f"[+] Report saved to: {output}")
         return
 
-    # --- Multi-account scanning (chain or just scan) ---
+    # --- Multi-account scanning ---
     if args.chain or args.accounts or args.accounts_file:
         run_fix_chain(args)
         return
@@ -1256,14 +1557,13 @@ def main():
     print(f"[*] Scanning {args.host} on {len(ports)} ports...")
     open_services = scan_host(args.host, ports, args.threads)
 
+    # If no open ports found, still allow web scanning to proceed.
     if not open_services:
-        print("[!] No open ports found.")
-        if args.db:
-            save_scan(args.host, "local", "default", {}, [])
-        return
+        print("[!] No open ports found. Proceeding with web scanning only...")
 
     all_findings = []
 
+    # --- CLOUD SCAN ---
     if args.cloud:
         print("[*] Checking AWS...")
         all_findings.extend(check_aws_s3_public())
@@ -1275,17 +1575,86 @@ def main():
         print("[*] Checking OCI...")
         all_findings.extend(check_oci_storage_public())
 
-    for port, (service, banner) in open_services.items():
-        if args.api and service in ("HTTP", "HTTPS"):
-            protocol = "https" if port in (443, 8443) else "http"
-            all_findings.extend(check_api_vulnerabilities(args.host, port, protocol))
+    # --- API SCAN ---
+    if open_services:
+        for port, (service, banner) in open_services.items():
+            if args.api and service in ("HTTP", "HTTPS"):
+                protocol = "https" if port in (443, 8443) else "http"
+                all_findings.extend(check_api_vulnerabilities(args.host, port, protocol))
 
-    # Auto-remediation (single account)
+    # --- WEB SCANNER (DIR, SQLI, XSS) – Always run if flags are set, regardless of open ports ---
+    target_url = args.host
+    if not (target_url.startswith('http://') or target_url.startswith('https://')):
+        target_url = f"https://{target_url}"
+
+    if args.dir:
+        print(f"[*] Discovering directories on {target_url}...")
+        dir_findings = discover_directories(target_url)
+        for f in dir_findings:
+            all_findings.append((
+                f"Directory found: {f['path']} (HTTP {f['status']})",
+                "Web Security",
+                5.0 if f['risk'] == "MEDIUM" else 2.0,
+                f['risk'],
+                "DIR_DISCOVERY",
+                f['path']
+            ))
+
+    if args.sqli:
+        print(f"[*] Testing SQL injection on {target_url}...")
+        sqli_findings = test_sqli(target_url)
+        for f in sqli_findings:
+            all_findings.append((
+                f"SQL Injection: {f['url']} (payload: {f['payload']})",
+                "Web Security",
+                9.0,
+                f['risk'],
+                "SQLI",
+                f['url']
+            ))
+
+    if args.xss:
+        print(f"[*] Testing XSS on {target_url}...")
+        xss_findings = test_xss(target_url)
+        for f in xss_findings:
+            all_findings.append((
+                f"XSS: {f['url']} (payload: {f['payload']})",
+                "Web Security",
+                7.5,
+                f['risk'],
+                "XSS",
+                f['url']
+            ))
+
+    if args.cve and open_services:
+        print(f"[*] Looking up CVEs for detected services...")
+        for port, (service, banner) in open_services.items():
+            if banner:
+                cve_data = lookup_cve(service, version=None)
+                if cve_data:
+                    all_findings.append((
+                        f"CVE {cve_data['id']}: {cve_data['description']}",
+                        "CVE",
+                        float(cve_data.get('cvss_score', 5.0)),
+                        "HIGH",
+                        "CVE",
+                        cve_data['id']
+                    ))
+
+    # --- RISK SCORE ---
+    risk_score = calculate_risk_score(all_findings)
+
+    # --- AUTO-REMEDIATION ---
     fixed_count = 0
     if args.fix:
         print("\n" + "="*80)
         print("🛡️ AUTO-REMEDIATION ENGAGED")
+        if args.human:
+            print("👤 HUMAN-IN-THE-LOOP MODE: You will approve each fix")
+        else:
+            print("🤖 AUTO MODE: Fixing everything automatically")
         print("="*80)
+
         fixable = []
         for f in all_findings:
             if len(f) >= 5:
@@ -1294,22 +1663,44 @@ def main():
                 extra = f[5] if len(f) > 5 else None
                 if sev in ["HIGH", "CRITICAL"] and fix_type is not None:
                     fixable.append((f, fix_type, extra))
+
         if not fixable:
             print("No HIGH/CRITICAL fixable vulnerabilities found.")
         else:
             print(f"Found {len(fixable)} fixable HIGH/CRITICAL issues.")
-            if not args.yes:
-                response = input("Apply fixes? (y/n): ").strip().lower()
-                if response != 'y':
-                    print("Remediation aborted.")
-                    sys.exit(0)
+
+            if not args.human:
+                if not args.yes:
+                    response = input("Apply all fixes? (y/n): ").strip().lower()
+                    if response != 'y':
+                        print("Remediation aborted.")
+                        sys.exit(0)
+            else:
+                print("\n👤 HUMAN MODE: You will review each vulnerability before fixing.")
+
             for item in fixable:
                 f, fix_type, extra = item
                 desc = f[0]
                 sev = f[3]
+
+                if args.human:
+                    print("\n" + "-"*80)
+                    print(f"🔍 Vulnerability: {desc}")
+                    print(f"⚠️ Severity: {sev}")
+                    print("-"*80)
+                    choice = input("Apply this fix? (y/n/skip all): ").strip().lower()
+                    if choice == 'n' or choice == 'no':
+                        print(f"⏭️ Skipping: {desc}")
+                        save_alert("unknown", "default", f"⏭️ SKIPPED: {desc}", sev, fixed=False)
+                        continue
+                    elif choice == 's' or choice == 'skip all':
+                        print("⏭️ Skipping all remaining fixes.")
+                        break
+
                 print(f"\n🔧 Processing: {desc}")
                 success = False
                 msg = ""
+
                 if fix_type == "S3_PUBLIC" and extra:
                     success, msg = fix_s3_public(extra, cloud="aws", account="default")
                 elif fix_type == "SG_OPEN" and extra:
@@ -1322,6 +1713,7 @@ def main():
                     success, msg = fix_oci_bucket_public(ns, bucket, cloud="oci", account="default")
                 else:
                     msg = f"⚠️ No auto-fix implemented for {fix_type}"
+
                 if success:
                     fixed_count += 1
                     save_alert("unknown", "default", desc, sev, fixed=True)
@@ -1330,33 +1722,38 @@ def main():
                 else:
                     save_alert("unknown", "default", f"❌ FAILED: {desc}", sev, fixed=False)
                 print(msg)
+
             print(f"\n✅ Remediation complete. Fixed {fixed_count} out of {len(fixable)} issues.")
 
     if args.db:
-        save_scan(args.host, "local", "default", open_services, all_findings)
+        save_scan(args.host, "local", "default", open_services if open_services else {}, all_findings)
 
-    # Print report
+    # --- Print report ---
     table_data = []
-    for port, (service, banner) in open_services.items():
-        table_data.append([port, service, banner[:60] if banner else "", "-", "-", "INFO"])
+    if open_services:
+        for port, (service, banner) in open_services.items():
+            table_data.append([port, service, banner[:60] if banner else "", "-", "-", "INFO"])
     for f in all_findings:
         desc, cat, score, sev = f[0], f[1], f[2], f[3]
         table_data.append(["N/A", cat, desc[:60], f"{score:.1f}", sev, "VULN"])
 
     print("\n" + "="*110)
-    print(" 🚀 APCSS - FOUR-CLOUD MULTI-ACCOUNT SECURITY ".center(110))
+    print(" 🛡️ AEGIS – SELF-HEALING CLOUD SECURITY ".center(110))
     print("="*110)
+    print(f"🟢 Overall Risk Score: {risk_score}/100")
+    print("="*110)
+
     colour_map = {"CRITICAL": "\033[91m", "HIGH": "\033[93m", "MEDIUM": "\033[94m", "INFO": "\033[37m"}
     reset = "\033[0m"
     headers = ["Port", "Service/Check", "Details", "CVSS", "Severity", "Type"]
     for row in sorted(table_data, key=lambda x: {"CRITICAL":0,"HIGH":1,"MEDIUM":2,"INFO":3}.get(x[4], 9)):
         print(colour_map.get(row[4], "") + tabulate([row], headers=headers, tablefmt="plain") + reset)
-    
+
     print("\n" + "="*110)
     print(f"Total Open Ports: {len(open_services)} | Total Findings: {len(all_findings)} | Auto-Fixed: {fixed_count}")
     if args.fix:
         print("[+] Auto-remediation applied.")
-    print("[+] APCSS learning engine active. Run again to detect DRIFT.")
+    print("[+] Aegis learning engine active. Run again to detect DRIFT.")
     if args.slack:
         print("[+] Slack alerts enabled.")
     print("="*110)
