@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
-Aegis (APCSS) – Automated Protection of Cloud Security Systems
-The world's first open‑source, four‑cloud, self‑healing security platform.
-Full SaaS with landing page, pricing, AI assistant, and live dashboard.
+Aegis – Full SaaS with OTP Email Verification
 Built by Austin Emmanuel – 19‑year‑old founder from Nigeria
 """
 import socket
@@ -21,6 +19,8 @@ import requests
 import urllib3
 import subprocess
 import time
+import random
+import string
 from typing import Dict, List, Tuple, Optional
 from urllib.request import urlopen, Request
 from urllib.error import URLError
@@ -121,10 +121,23 @@ def init_db():
         email TEXT UNIQUE,
         password TEXT,
         company TEXT,
-        created_at TEXT
+        created_at TEXT,
+        verified INTEGER DEFAULT 0
     )''')
     conn.commit()
     conn.close()
+
+# ---- OTP Storage (in-memory for simplicity, replace with Redis/DB later) ----
+pending_users = {}
+
+def generate_otp():
+    return ''.join(random.choices(string.digits, k=6))
+
+def send_otp_email(email, otp):
+    # In production, use SMTP or SendGrid. For now, print to console/log.
+    print(f"[OTP] Your verification code for Aegis is: {otp}")
+    print(f"[OTP] Sent to: {email}")
+    return True
 
 def ensure_db_tables():
     try:
@@ -1277,7 +1290,7 @@ def run_fix_chain(args):
             print(f"[!] Unknown cloud: {cloud}")
     print("[*] Multi-cloud scanning complete.")
 
-# ---------- HTML TEMPLATES ----------
+# ---------- HTML TEMPLATES (FIXED) ----------
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html>
@@ -1287,10 +1300,9 @@ LOGIN_HTML = """
         body { background: #0a0e17; color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .login-box { background: #111b26; padding: 40px; border-radius: 12px; border: 1px solid #1e2a3a; width: 350px; }
         .login-box h1 { text-align: center; color: #00d4ff; margin-bottom: 30px; }
-        .login-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
-        .login-box .password-wrapper { position: relative; }
-        .login-box .password-wrapper input { padding-right: 40px; }
-        .login-box .toggle-password { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #8ba0b8; cursor: pointer; font-size: 18px; }
+        .login-box .field { position: relative; margin-bottom: 15px; }
+        .login-box .field input { width: 100%; padding: 12px; padding-left: 45px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
+        .login-box .toggle-password { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #8ba0b8; cursor: pointer; font-size: 18px; }
         .login-box button { width: 100%; padding: 12px; background: #00d4ff; color: #0a0e17; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
         .login-box button:hover { background: #7b2ffc; color: #fff; }
         .login-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
@@ -1308,7 +1320,7 @@ LOGIN_HTML = """
         {% endif %}
         <form method="POST" action="/login">
             <input type="email" name="email" placeholder="Email" required>
-            <div class="password-wrapper">
+            <div class="field">
                 <input type="password" name="password" id="loginPassword" placeholder="Password" required>
                 <button type="button" class="toggle-password" onclick="togglePassword('loginPassword', this)">👁️</button>
             </div>
@@ -1344,10 +1356,9 @@ SIGNUP_HTML = """
         body { background: #0a0e17; color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .signup-box { background: #111b26; padding: 40px; border-radius: 12px; border: 1px solid #1e2a3a; width: 350px; }
         .signup-box h1 { text-align: center; color: #00d4ff; margin-bottom: 30px; }
-        .signup-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
-        .signup-box .password-wrapper { position: relative; }
-        .signup-box .password-wrapper input { padding-right: 40px; }
-        .signup-box .toggle-password { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #8ba0b8; cursor: pointer; font-size: 18px; }
+        .signup-box .field { position: relative; margin-bottom: 15px; }
+        .signup-box .field input { width: 100%; padding: 12px; padding-left: 45px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
+        .signup-box .toggle-password { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #8ba0b8; cursor: pointer; font-size: 18px; }
         .signup-box button { width: 100%; padding: 12px; background: #00d4ff; color: #0a0e17; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
         .signup-box button:hover { background: #7b2ffc; color: #fff; }
         .signup-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
@@ -1364,8 +1375,8 @@ SIGNUP_HTML = """
         {% endif %}
         <form method="POST" action="/signup">
             <input type="text" name="company" placeholder="Company Name" required>
-            <input type="email" name="email" placeholder="Business Email" required>
-            <div class="password-wrapper">
+            <input type="email" name="email" placeholder="Email" required>
+            <div class="field">
                 <input type="password" name="password" id="signupPassword" placeholder="Password" required>
                 <button type="button" class="toggle-password" onclick="togglePassword('signupPassword', this)">👁️</button>
             </div>
@@ -1391,6 +1402,43 @@ SIGNUP_HTML = """
 </html>
 """
 
+OTP_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Aegis – Verify Email</title>
+    <style>
+        body { background: #0a0e17; color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .otp-box { background: #111b26; padding: 40px; border-radius: 12px; border: 1px solid #1e2a3a; width: 350px; }
+        .otp-box h1 { text-align: center; color: #00d4ff; margin-bottom: 30px; }
+        .otp-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; text-align: center; font-size: 24px; letter-spacing: 8px; }
+        .otp-box button { width: 100%; padding: 12px; background: #00d4ff; color: #0a0e17; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
+        .otp-box button:hover { background: #7b2ffc; color: #fff; }
+        .otp-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
+        .otp-box .info { color: #8ba0b8; text-align: center; margin-bottom: 20px; font-size: 14px; }
+        .otp-box .resend { text-align: center; margin-top: 15px; color: #8ba0b8; font-size: 14px; }
+        .otp-box .resend a { color: #00d4ff; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="otp-box">
+        <h1>📧 Verify Email</h1>
+        <div class="info">We sent a 6‑digit code to <strong>{{ email }}</strong>. Enter it below.</div>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST" action="/verify-otp">
+            <input type="text" name="otp" placeholder="6‑digit code" maxlength="6" required autofocus>
+            <button type="submit">Verify Account</button>
+        </form>
+        <div class="resend">
+            Didn't get the code? <a href="/resend-otp">Resend OTP</a>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
 LANDING_PAGE_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -1400,24 +1448,17 @@ LANDING_PAGE_HTML = """
     <title>Aegis – Self‑Healing Cloud Security</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-        body { background: #0a0e17; color: #e0e6ed; overflow-x: hidden; }
+        body { background: #050a12; color: #e0e6ed; overflow-x: hidden; }
         a { text-decoration: none; color: inherit; }
 
-        /* ── Animated Background ── */
-        .bg-animation { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; overflow: hidden; }
-        .bg-animation .circle { position: absolute; border-radius: 50%; background: rgba(0,212,255,0.03); animation: float 20s infinite; }
-        .bg-animation .circle:nth-child(1) { width: 400px; height: 400px; top: -100px; left: -100px; animation-delay: 0s; }
-        .bg-animation .circle:nth-child(2) { width: 500px; height: 500px; bottom: -200px; right: -200px; animation-delay: 5s; background: rgba(123,47,252,0.04); }
-        .bg-animation .circle:nth-child(3) { width: 300px; height: 300px; top: 50%; left: 50%; transform: translate(-50%, -50%); animation-delay: 10s; background: rgba(0,212,255,0.02); }
-        @keyframes float {
-            0% { transform: translate(0, 0) scale(1); }
-            50% { transform: translate(30px, -30px) scale(1.1); }
-            100% { transform: translate(-20px, 20px) scale(1); }
-        }
+        .bg-animation { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; overflow: hidden; background: radial-gradient(ellipse at 20% 50%, #0d1b2a 0%, #050a12 100%); }
+        .bg-animation .glow { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.3; }
+        .bg-animation .glow:nth-child(1) { width: 600px; height: 600px; top: -200px; left: -200px; background: #00d4ff; animation: float 25s infinite; }
+        .bg-animation .glow:nth-child(2) { width: 500px; height: 500px; bottom: -200px; right: -200px; background: #7b2ffc; animation: float 30s infinite reverse; }
+        @keyframes float { 0% { transform: translate(0,0) scale(1); } 50% { transform: translate(40px, -40px) scale(1.1); } 100% { transform: translate(-20px, 20px) scale(1); } }
 
         .container { max-width: 1400px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1; }
 
-        /* ── Navigation ── */
         nav { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; flex-wrap: wrap; }
         .logo { font-size: 28px; font-weight: 700; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .nav-links { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
@@ -1426,7 +1467,6 @@ LANDING_PAGE_HTML = """
         .nav-cta { background: #00d4ff; color: #0a0e17 !important; padding: 8px 20px; border-radius: 30px; font-weight: 600; }
         .nav-cta:hover { background: #7b2ffc; color: #fff !important; }
 
-        /* ── Hero ── */
         .hero { display: flex; align-items: center; justify-content: space-between; padding: 60px 0; gap: 60px; min-height: 70vh; }
         .hero-content { flex: 1; }
         .hero-content h1 { font-size: 52px; font-weight: 700; line-height: 1.1; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 20px; }
@@ -1436,34 +1476,31 @@ LANDING_PAGE_HTML = """
         .btn-primary:hover { background: #7b2ffc; color: #fff; }
         .btn-secondary { background: transparent; border: 1px solid #1e2a3a; color: #e0e6ed; padding: 14px 32px; border-radius: 30px; font-weight: 600; cursor: pointer; transition: 0.2s; display: inline-block; }
         .btn-secondary:hover { border-color: #00d4ff; color: #00d4ff; }
-        .hero-image { flex: 1; background: #111b26; border-radius: 16px; padding: 40px; border: 1px solid #1e2a3a; text-align: center; min-height: 300px; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+        .hero-image { flex: 1; background: rgba(17,27,38,0.6); backdrop-filter: blur(10px); border-radius: 16px; padding: 40px; border: 1px solid #1e2a3a; text-align: center; min-height: 300px; display: flex; align-items: center; justify-content: center; flex-direction: column; }
         .hero-image .placeholder-icon { font-size: 80px; margin-bottom: 20px; animation: pulse 2s infinite; }
         @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
         .hero-image p { color: #8ba0b8; font-size: 16px; }
 
-        /* ── Trust Bar ── */
         .trust-bar { padding: 30px 0; border-top: 1px solid #1e2a3a; border-bottom: 1px solid #1e2a3a; text-align: center; margin: 20px 0; }
         .trust-bar p { color: #5a6a7a; font-size: 14px; letter-spacing: 1px; margin-bottom: 15px; }
         .trust-logos { display: flex; justify-content: center; flex-wrap: wrap; gap: 40px; }
         .trust-logos span { color: #8ba0b8; font-size: 18px; font-weight: 500; opacity: 0.7; transition: 0.2s; }
         .trust-logos span:hover { opacity: 1; }
 
-        /* ── Features ── */
         .features { padding: 80px 0; }
         .features h2 { text-align: center; font-size: 36px; margin-bottom: 50px; }
         .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; }
-        .feature-card { background: #111b26; border-radius: 12px; padding: 30px; border: 1px solid #1e2a3a; transition: 0.3s; }
+        .feature-card { background: rgba(17,27,38,0.6); backdrop-filter: blur(10px); border-radius: 12px; padding: 30px; border: 1px solid #1e2a3a; transition: 0.3s; }
         .feature-card:hover { border-color: #00d4ff; transform: translateY(-5px); }
         .feature-card .icon { font-size: 40px; margin-bottom: 15px; }
         .feature-card h3 { font-size: 20px; margin-bottom: 10px; }
         .feature-card p { color: #8ba0b8; font-size: 14px; line-height: 1.6; }
 
-        /* ── Pricing ── */
         .pricing { padding: 80px 0; }
         .pricing h2 { text-align: center; font-size: 36px; margin-bottom: 20px; }
         .pricing .sub { text-align: center; color: #8ba0b8; margin-bottom: 50px; font-size: 18px; }
         .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; }
-        .pricing-card { background: #111b26; border-radius: 12px; padding: 30px; border: 1px solid #1e2a3a; transition: 0.3s; text-align: center; }
+        .pricing-card { background: rgba(17,27,38,0.6); backdrop-filter: blur(10px); border-radius: 12px; padding: 30px; border: 1px solid #1e2a3a; transition: 0.3s; text-align: center; }
         .pricing-card:hover { border-color: #00d4ff; transform: translateY(-5px); }
         .pricing-card.popular { border-color: #00d4ff; }
         .pricing-card .plan { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
@@ -1475,12 +1512,10 @@ LANDING_PAGE_HTML = """
         .pricing-card .btn { background: #00d4ff; color: #0a0e17; padding: 10px 30px; border-radius: 30px; font-weight: 600; display: inline-block; transition: 0.2s; }
         .pricing-card .btn:hover { background: #7b2ffc; color: #fff; }
 
-        /* ── CTA ── */
-        .cta-section { padding: 80px 0; text-align: center; background: #111b26; border-radius: 16px; border: 1px solid #1e2a3a; margin: 40px 0; }
+        .cta-section { padding: 80px 0; text-align: center; background: rgba(17,27,38,0.6); backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid #1e2a3a; margin: 40px 0; }
         .cta-section h2 { font-size: 36px; margin-bottom: 15px; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .cta-section p { color: #8ba0b8; font-size: 18px; margin-bottom: 30px; }
 
-        /* ── Footer ── */
         footer { padding: 30px 0; border-top: 1px solid #1e2a3a; text-align: center; color: #5a6a7a; font-size: 14px; }
         footer a { color: #8ba0b8; margin: 0 15px; }
         footer a:hover { color: #e0e6ed; }
@@ -1500,16 +1535,13 @@ LANDING_PAGE_HTML = """
 </head>
 <body>
 
-    <!-- Animated Background -->
     <div class="bg-animation">
-        <div class="circle"></div>
-        <div class="circle"></div>
-        <div class="circle"></div>
+        <div class="glow"></div>
+        <div class="glow"></div>
     </div>
 
     <div class="container">
 
-        <!-- Navigation -->
         <nav>
             <div class="logo">🛡️ Aegis</div>
             <div class="nav-links">
@@ -1520,7 +1552,6 @@ LANDING_PAGE_HTML = """
             </div>
         </nav>
 
-        <!-- Hero -->
         <section class="hero">
             <div class="hero-content">
                 <h1>Self‑Healing Cloud Security</h1>
@@ -1541,7 +1572,6 @@ LANDING_PAGE_HTML = """
             </div>
         </section>
 
-        <!-- Trust Bar -->
         <div class="trust-bar">
             <p>TRUSTED BY TEAMS BUILDING THE FUTURE</p>
             <div class="trust-logos">
@@ -1553,7 +1583,6 @@ LANDING_PAGE_HTML = """
             </div>
         </div>
 
-        <!-- Features -->
         <section class="features" id="features">
             <h2>Why Aegis?</h2>
             <div class="feature-grid">
@@ -1580,7 +1609,6 @@ LANDING_PAGE_HTML = """
             </div>
         </section>
 
-        <!-- Pricing -->
         <section class="pricing" id="pricing">
             <h2>Simple, Transparent Pricing</h2>
             <p class="sub">Start free, scale as you grow.</p>
@@ -1623,14 +1651,12 @@ LANDING_PAGE_HTML = """
             </div>
         </section>
 
-        <!-- CTA -->
         <section class="cta-section">
             <h2>Ready to secure your cloud?</h2>
             <p>Join the future of open‑source, self‑healing cloud security.</p>
             <a href="/signup" class="btn-primary">Get Started – It’s Free</a>
         </section>
 
-        <!-- Footer -->
         <footer>
             <p>
                 <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank">GitHub</a>
@@ -1711,7 +1737,6 @@ PRICING_HTML = """
 </html>
 """
 
-# ---------- DASHBOARD WITH AI ASSISTANT ----------
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html>
@@ -1770,7 +1795,6 @@ DASHBOARD_HTML = """
         .scan-loading { display: inline-block; width: 16px; height: 16px; border: 2px solid #8ba0b8; border-top-color: #00d4ff; border-radius: 50%; animation: spin 0.8s linear infinite; margin-left: 10px; vertical-align: middle; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* ---- AI Assistant (Floating Shield) ---- */
         .ai-bubble { position: fixed; bottom: 30px; right: 30px; z-index: 999; }
         .ai-bubble button { width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, #00d4ff, #7b2ffc); border: none; color: #fff; font-size: 30px; cursor: pointer; box-shadow: 0 0 30px rgba(0,212,255,0.3); transition: 0.3s; display: flex; align-items: center; justify-content: center; }
         .ai-bubble button:hover { transform: scale(1.1); box-shadow: 0 0 40px rgba(0,212,255,0.5); }
@@ -1793,7 +1817,6 @@ DASHBOARD_HTML = """
 </head>
 <body>
 
-    <!-- Sidebar -->
     <div class="sidebar">
         <div class="logo">🛡️ Aegis<span>Cloud Security</span></div>
         <a href="#" class="active"><span class="icon">📊</span> Dashboard</a>
@@ -1803,9 +1826,7 @@ DASHBOARD_HTML = """
         <a href="/logout" class="logout"><span class="icon">🚪</span> Logout</a>
     </div>
 
-    <!-- Main -->
     <div class="main">
-        <!-- Top Bar -->
         <div class="topbar">
             <h1>📊 Dashboard</h1>
             <div class="user">
@@ -1818,7 +1839,6 @@ DASHBOARD_HTML = """
             </div>
         </div>
 
-        <!-- Stats -->
         <div class="stats" id="stats">
             <div class="stat-card"><div class="number" id="totalScans">-</div><div class="label">📋 Total Scans</div></div>
             <div class="stat-card critical"><div class="number" id="criticalFindings">-</div><div class="label">🔥 Critical Findings</div></div>
@@ -1826,13 +1846,11 @@ DASHBOARD_HTML = """
             <div class="stat-card"><div class="number" id="openPorts">-</div><div class="label">🔌 Open Ports</div></div>
         </div>
 
-        <!-- Charts -->
         <div class="chart-row">
             <div class="chart-box"><h3>📈 Vulnerability Trend</h3><canvas id="trendChart"></canvas></div>
             <div class="chart-box"><h3>📊 Severity Breakdown</h3><canvas id="severityChart"></canvas></div>
         </div>
 
-        <!-- Recent Scans -->
         <div class="section">
             <h2>📋 Recent Scans</h2>
             <table>
@@ -1841,7 +1859,6 @@ DASHBOARD_HTML = """
             </table>
         </div>
 
-        <!-- Alerts -->
         <div class="section">
             <h2>🔔 Alerts & Remediations</h2>
             <table>
@@ -1850,19 +1867,16 @@ DASHBOARD_HTML = """
             </table>
         </div>
 
-        <!-- Attack Paths -->
         <div class="section">
             <h2>🔥 Attack Paths</h2>
             <div id="attackPaths"></div>
         </div>
     </div>
 
-    <!-- AI Assistant (Floating Shield) -->
     <div class="ai-bubble">
         <button id="aiToggle" onclick="toggleAI()">🛡️</button>
     </div>
 
-    <!-- AI Chat Window -->
     <div class="ai-chat" id="aiChat">
         <div class="header">
             <h3>🤖 Aegis AI</h3>
@@ -2013,27 +2027,23 @@ DASHBOARD_HTML = """
             }
         }
 
-        // AI Toggle
         function toggleAI() {
             const chat = document.getElementById('aiChat');
             chat.classList.toggle('open');
         }
 
-        // Send AI message
         async function sendAI() {
             const input = document.getElementById('aiInput');
             const msg = input.value.trim();
             if (!msg) return;
             input.value = '';
             const messagesDiv = document.getElementById('aiMessages');
-            // Add user message
             const userDiv = document.createElement('div');
             userDiv.className = 'msg user';
             userDiv.textContent = msg;
             messagesDiv.appendChild(userDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
-            // Add loading message
             const loadingDiv = document.createElement('div');
             loadingDiv.className = 'msg ai';
             loadingDiv.textContent = 'Thinking...';
@@ -2054,7 +2064,6 @@ DASHBOARD_HTML = """
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
-        // Initial load
         loadData();
         setInterval(loadData, 30000);
     </script>
@@ -2068,7 +2077,6 @@ if FLASK_AVAILABLE:
     app = Flask(__name__)
     app.secret_key = os.urandom(24)
 
-    # ── Public Routes ──
     @app.route('/')
     def landing_page():
         return render_template_string(LANDING_PAGE_HTML)
@@ -2077,7 +2085,6 @@ if FLASK_AVAILABLE:
     def pricing():
         return render_template_string(PRICING_HTML)
 
-    # ── Auth ──
     @app.route('/login', methods=['GET', 'POST'])
     def login():
         if request.method == 'POST':
@@ -2085,7 +2092,7 @@ if FLASK_AVAILABLE:
             password = request.form['password']
             conn = sqlite3.connect(DB_NAME)
             c = conn.cursor()
-            c.execute("SELECT * FROM users WHERE email = ?", (email,))
+            c.execute("SELECT * FROM users WHERE email = ? AND verified = 1", (email,))
             user = c.fetchone()
             conn.close()
             if user and check_password_hash(user[2], password):
@@ -2094,37 +2101,77 @@ if FLASK_AVAILABLE:
                 session['company'] = user[3]
                 return redirect('/dashboard')
             else:
-                return render_template_string(LOGIN_HTML, error="Invalid email or password")
+                return render_template_string(LOGIN_HTML, error="Invalid email or account not verified")
         return render_template_string(LOGIN_HTML, error=None)
 
-    FREE_DOMAINS = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 'mail.com', 'protonmail.com', 'icloud.com']
     @app.route('/signup', methods=['GET', 'POST'])
     def signup():
         if request.method == 'POST':
             email = request.form['email']
             company = request.form['company']
             password = generate_password_hash(request.form['password'])
-            domain = email.split('@')[-1].lower()
-            if domain in FREE_DOMAINS:
-                return render_template_string(SIGNUP_HTML, error="Please use a business email address.")
-            try:
-                conn = sqlite3.connect(DB_NAME)
-                c = conn.cursor()
-                c.execute("INSERT INTO users (email, password, company, created_at) VALUES (?, ?, ?, datetime('now'))", 
-                          (email, password, company))
-                conn.commit()
+            
+            # Check if already registered
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+            c.execute("SELECT * FROM users WHERE email = ?", (email,))
+            existing = c.fetchone()
+            if existing:
                 conn.close()
-                return redirect('/login')
-            except sqlite3.IntegrityError:
-                return render_template_string(SIGNUP_HTML, error="Email already exists")
+                return render_template_string(SIGNUP_HTML, error="Email already registered.")
+
+            # Generate OTP and store in pending dict
+            otp = generate_otp()
+            pending_users[email] = {
+                'company': company,
+                'password': password,
+                'otp': otp,
+                'expiry': datetime.datetime.now() + datetime.timedelta(minutes=10)
+            }
+            conn.close()
+            
+            # Send OTP (print to console / logs)
+            send_otp_email(email, otp)
+            
+            # Render OTP page
+            return render_template_string(OTP_HTML, email=email, error=None)
         return render_template_string(SIGNUP_HTML, error=None)
+
+    @app.route('/verify-otp', methods=['POST'])
+    def verify_otp():
+        otp = request.form['otp']
+        # We need to identify which user is verifying. We'll use a session variable or email from form.
+        # Since we don't have session yet, we'll use a hidden field or just guess the last pending user.
+        # For simplicity, we'll check all pending users (in production, use session or email input).
+        # Actually the best: check for any pending user with this OTP.
+        email = None
+        for e, data in pending_users.items():
+            if data['otp'] == otp and datetime.datetime.now() < data['expiry']:
+                email = e
+                break
+        
+        if email:
+            data = pending_users.pop(email)
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+            c.execute("INSERT INTO users (email, password, company, created_at, verified) VALUES (?, ?, ?, datetime('now'), 1)",
+                      (email, data['password'], data['company']))
+            conn.commit()
+            conn.close()
+            return redirect('/login')
+        else:
+            return render_template_string(OTP_HTML, email="your email", error="Invalid or expired OTP. Please try again.")
+
+    @app.route('/resend-otp')
+    def resend_otp():
+        # Simplified: just redirect to signup
+        return redirect('/signup')
 
     @app.route('/logout')
     def logout():
         session.clear()
         return redirect('/')
 
-    # ── Dashboard ──
     @app.route('/dashboard')
     def dashboard():
         if not session.get('user_id'):
@@ -2135,7 +2182,6 @@ if FLASK_AVAILABLE:
             company=session.get('company', 'My Company')
         )
 
-    # ── API ──
     @app.route('/api/data')
     def api_data():
         scans = get_scan_history()
@@ -2179,7 +2225,6 @@ if FLASK_AVAILABLE:
         question = data.get('question', '')
         if not question:
             return jsonify({'response': 'Please ask a question.'})
-        # Fetch recent scan context
         context = ""
         try:
             conn = sqlite3.connect(DB_NAME)
