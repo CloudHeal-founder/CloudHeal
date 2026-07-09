@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Aegis – Full SaaS with OTP Email Verification, First/Last Name
+Aegis – Full SaaS with OTP Email Verification, First/Last Name, Free/Premium tiers
 Built by Austin Emmanuel – 19‑year‑old founder from Nigeria
 """
 import socket
@@ -79,6 +79,14 @@ try:
 except ImportError:
     OCI_AVAILABLE = False
 
+# ----- Stripe (optional) -----
+try:
+    import stripe
+    STRIPE_AVAILABLE = True
+except ImportError:
+    STRIPE_AVAILABLE = False
+    print("[!] Stripe not installed. Install with: pip install stripe")
+
 # ----- Web Dashboard -----
 try:
     from flask import Flask, render_template_string, jsonify
@@ -124,7 +132,8 @@ def init_db():
         first_name TEXT,
         last_name TEXT,
         created_at TEXT,
-        verified INTEGER DEFAULT 0
+        verified INTEGER DEFAULT 0,
+        is_premium INTEGER DEFAULT 0
     )''')
     conn.commit()
     conn.close()
@@ -654,7 +663,7 @@ def lookup_cve(service, version=None):
             return {
                 "id": cve['id'],
                 "description": cve['descriptions'][0]['value'][:200],
-                "cvss_score": cve.get('metrics', {}).get('cvssMetricV2', [{}])[0].get('cvssData', {}).get('baseScore', 'N/A')
+                "cvss_score": float(cve.get('metrics', {}).get('cvssMetricV2', [{}])[0].get('cvssData', {}).get('baseScore', 5.0))
             }
     except:
         pass
@@ -1587,7 +1596,7 @@ LANDING_PAGE_HTML = """
 
         <section class="pricing" id="pricing">
             <h2>Simple, Transparent Pricing</h2>
-            <p class="sub">Start free, scale as you grow.</p>
+            <p class="sub">Start free. Scale as you grow.</p>
             <div class="pricing-grid">
                 <div class="pricing-card">
                     <div class="plan">Free</div>
@@ -1733,15 +1742,18 @@ DASHBOARD_HTML = """
         .sidebar .logout { margin-top: 40px; border-top: 1px solid #1e2a3a; padding-top: 20px; color: #ff4757; }
         .sidebar .logout:hover { border-left-color: #ff4757; }
         .main { margin-left: 220px; flex: 1; padding: 20px 30px; overflow-y: auto; height: 100vh; }
-        .topbar { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid #1e2a3a; margin-bottom: 25px; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid #1e2a3a; margin-bottom: 25px; flex-wrap: wrap; gap: 10px; }
         .topbar h1 { font-size: 24px; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .topbar .user { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
         .topbar .user .email { color: #8ba0b8; font-size: 14px; }
         .topbar .user .badge { background: #1e2a3a; padding: 6px 14px; border-radius: 20px; font-size: 12px; color: #8ba0b8; }
+        .topbar .user .premium-badge { background: #f1c40f; color: #0a0e17; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
         .topbar .user .last-updated { color: #5a6a7a; font-size: 12px; }
         .scan-btn { background: #00d4ff; color: #0a0e17; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .scan-btn:hover { background: #7b2ffc; color: #fff; }
         .scan-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .upgrade-btn { background: #f1c40f; color: #0a0e17; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .upgrade-btn:hover { background: #e67e22; }
         .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 30px; }
         .stat-card { background: #111b26; border-radius: 12px; padding: 20px; border: 1px solid #1e2a3a; transition: transform 0.2s; }
         .stat-card:hover { transform: translateY(-3px); border-color: #00d4ff; }
@@ -1788,7 +1800,14 @@ DASHBOARD_HTML = """
         .ai-chat .input-area button { margin-left: 10px; padding: 10px 16px; background: #00d4ff; color: #0a0e17; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .ai-chat .input-area button:hover { background: #7b2ffc; color: #fff; }
 
-        @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; } .chart-row { grid-template-columns: 1fr; } .stats { grid-template-columns: 1fr 1fr; } .ai-chat { width: 300px; right: 10px; bottom: 90px; } }
+        .scan-form { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 15px; align-items: end; }
+        .scan-form .field { display: flex; flex-direction: column; }
+        .scan-form label { font-size: 12px; color: #8ba0b8; margin-bottom: 4px; }
+        .scan-form input, .scan-form select { background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; padding: 8px 12px; border-radius: 6px; }
+        .scan-form button { background: #00d4ff; color: #0a0e17; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .scan-form button:hover { background: #7b2ffc; color: #fff; }
+
+        @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; } .chart-row { grid-template-columns: 1fr; } .stats { grid-template-columns: 1fr 1fr; } .ai-chat { width: 300px; right: 10px; bottom: 90px; } .scan-form { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -1808,11 +1827,57 @@ DASHBOARD_HTML = """
             <div class="user">
                 <span class="badge">{{ company }}</span>
                 <span class="email">{{ email }}</span>
+                {% if is_premium %}
+                <span class="premium-badge">🌟 Premium</span>
+                {% else %}
+                <a href="/pricing" class="upgrade-btn">⬆️ Upgrade</a>
+                {% endif %}
                 <span class="last-updated" id="lastUpdated">Last updated: --</span>
                 <button class="scan-btn" id="scanBtn" onclick="startScan()">⚡ Scan Now</button>
                 <button class="refresh-btn" onclick="loadData()">⟳ Refresh</button>
                 <div id="scanSpinner" style="display:inline;"></div>
             </div>
+        </div>
+
+        <!-- Scan Form -->
+        <div class="section">
+            <h2>🛠️ New Scan</h2>
+            <form id="scanForm" class="scan-form" onsubmit="startScan(event)">
+                <div class="field">
+                    <label>Target IP / Domain</label>
+                    <input type="text" name="target" placeholder="e.g. 192.168.1.1 or example.com" required>
+                </div>
+                <div class="field">
+                    <label>Ports (e.g. 1-1024 or 80,443)</label>
+                    <input type="text" name="ports" value="1-1024">
+                </div>
+                <div class="field">
+                    <label>Cloud (optional)</label>
+                    <select name="cloud">
+                        <option value="">None (IP/Web)</option>
+                        <option value="aws">AWS</option>
+                        <option value="gcp">GCP</option>
+                        <option value="azure">Azure</option>
+                        <option value="oci">OCI</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Account ID (optional)</label>
+                    <input type="text" name="account_id" placeholder="e.g. 123456789012">
+                </div>
+                {% if is_premium %}
+                <div class="field" style="grid-column: span 1;">
+                    <label>Auto-Fix</label>
+                    <select name="auto_fix">
+                        <option value="false">No</option>
+                        <option value="true">Yes</option>
+                    </select>
+                </div>
+                <button type="submit">Start Scan</button>
+                {% else %}
+                <button type="submit" style="grid-column: span 1;">Start Scan (Free)</button>
+                {% endif %}
+            </form>
         </div>
 
         <div class="stats" id="stats">
@@ -1843,10 +1908,26 @@ DASHBOARD_HTML = """
             </table>
         </div>
 
+        {% if is_premium %}
         <div class="section">
             <h2>🔥 Attack Paths</h2>
             <div id="attackPaths"></div>
+            <button onclick="downloadPDF()" class="scan-btn" style="margin-top:10px;">📄 Download PDF Report</button>
         </div>
+        {% else %}
+        <div class="section" style="border-color: #f1c40f;">
+            <h2>🔒 Premium Features</h2>
+            <p style="color:#8ba0b8;">Upgrade to Premium to unlock:</p>
+            <ul style="color:#8ba0b8; list-style: none; padding: 0;">
+                <li>🛡️ Auto-Fix attack chains</li>
+                <li>📄 PDF compliance reports</li>
+                <li>🔗 Attack path visualisation</li>
+                <li>🧠 Advanced web vulnerability scanning (SQLi, XSS, directory discovery)</li>
+            </ul>
+            <a href="/pricing" class="upgrade-btn" style="display:inline-block; margin-top:15px;">⬆️ Upgrade Now</a>
+        </div>
+        {% endif %}
+
     </div>
 
     <div class="ai-bubble">
@@ -1902,6 +1983,7 @@ DASHBOARD_HTML = """
                     alertsTable.innerHTML = `<tr><td colspan="4" class="empty">No alerts yet.</td></tr>`;
                 }
 
+                {% if is_premium %}
                 const pathsDiv = document.getElementById('attackPaths');
                 if (data.attack_paths && data.attack_paths.length > 0) {
                     pathsDiv.innerHTML = data.attack_paths.map((path, i) => `
@@ -1913,6 +1995,7 @@ DASHBOARD_HTML = """
                 } else {
                     pathsDiv.innerHTML = '<span class="empty">✅ No attack paths found.</span>';
                 }
+                {% endif %}
 
                 // Charts
                 const ctx1 = document.getElementById('trendChart').getContext('2d');
@@ -1979,21 +2062,37 @@ DASHBOARD_HTML = """
 
         let scanInProgress = false;
 
-        async function startScan() {
+        async function startScan(event) {
+            if (event) event.preventDefault();
             if (scanInProgress) return;
             scanInProgress = true;
             document.getElementById('scanBtn').disabled = true;
             document.getElementById('scanSpinner').innerHTML = '<div class="scan-loading"></div>';
 
+            const form = document.getElementById('scanForm');
+            const data = new FormData(form);
+            const obj = Object.fromEntries(data.entries());
+
+            // For the button click (no form)
+            if (!event && !obj.target) {
+                // fallback: use default values
+                obj.target = document.querySelector('input[name="target"]')?.value || 'scanme.nmap.org';
+                obj.ports = document.querySelector('input[name="ports"]')?.value || '1-1024';
+                obj.cloud = document.querySelector('select[name="cloud"]')?.value || '';
+                obj.account_id = document.querySelector('input[name="account_id"]')?.value || '';
+                obj.auto_fix = document.querySelector('select[name="auto_fix"]')?.value || 'false';
+            }
+
             try {
-                const res = await fetch('/scan', { method: 'POST' });
+                const res = await fetch('/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(obj)
+                });
                 const result = await res.json();
-                if (result.status === 'ok') {
-                    alert('Scan completed successfully! Results will refresh.');
-                    loadData();
-                } else {
-                    alert('Scan failed: ' + (result.message || 'Unknown error'));
-                }
+                alert(result.message);
+                // Refresh after a few seconds
+                setTimeout(loadData, 5000);
             } catch (e) {
                 alert('Error starting scan: ' + e.message);
             } finally {
@@ -2040,6 +2139,21 @@ DASHBOARD_HTML = """
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
+        async function downloadPDF() {
+            try {
+                const res = await fetch('/api/pdf', { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'ok') {
+                    alert('PDF report generated: ' + data.file);
+                    window.open('/download/' + data.file, '_blank');
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (e) {
+                alert('Error: ' + e.message);
+            }
+        }
+
         loadData();
         setInterval(loadData, 30000);
     </script>
@@ -2052,6 +2166,13 @@ if FLASK_AVAILABLE:
     ensure_db_tables()
     app = Flask(__name__)
     app.secret_key = os.urandom(24)
+
+    # ---------- Stripe Configuration ----------
+    if STRIPE_AVAILABLE:
+        stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_...')
+        STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', 'pk_test_...')
+    else:
+        STRIPE_PUBLISHABLE_KEY = None
 
     @app.route('/')
     def landing_page():
@@ -2075,6 +2196,7 @@ if FLASK_AVAILABLE:
                 session['user_id'] = user[0]
                 session['email'] = user[1]
                 session['company'] = user[3]  # combined first+last
+                session['is_premium'] = user[8]  # is_premium column
                 return redirect('/dashboard')
             else:
                 return render_template_string(LOGIN_HTML, error="Invalid email or account not verified")
@@ -2130,8 +2252,8 @@ if FLASK_AVAILABLE:
             conn = sqlite3.connect(DB_NAME)
             c = conn.cursor()
             c.execute("""
-                INSERT INTO users (email, password, company, first_name, last_name, created_at, verified)
-                VALUES (?, ?, ?, ?, ?, datetime('now'), 1)
+                INSERT INTO users (email, password, company, first_name, last_name, created_at, verified, is_premium)
+                VALUES (?, ?, ?, ?, ?, datetime('now'), 1, 0)
             """, (email, data['password'], data['company'], data['first_name'], data['last_name']))
             conn.commit()
             conn.close()
@@ -2152,10 +2274,19 @@ if FLASK_AVAILABLE:
     def dashboard():
         if not session.get('user_id'):
             return redirect('/login')
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT is_premium, email, company FROM users WHERE id = ?", (session['user_id'],))
+        row = c.fetchone()
+        conn.close()
+        is_premium = row and row[0] == 1
+        email = row[1] if row else session.get('email')
+        company = row[2] if row else session.get('company')
         return render_template_string(
             DASHBOARD_HTML,
-            email=session.get('email', 'user@example.com'),
-            company=session.get('company', 'My Company')
+            email=email,
+            company=company,
+            is_premium=is_premium
         )
 
     @app.route('/api/data')
@@ -2168,6 +2299,7 @@ if FLASK_AVAILABLE:
         open_ports = scans[0][3] if scans else 0
 
         paths = []
+        # Only compute attack paths if user is premium (but we can always compute, it's cheap)
         try:
             resources = fetch_aws_resources('default')
             G = build_attack_graph(resources)
@@ -2215,16 +2347,239 @@ if FLASK_AVAILABLE:
         answer = ai_query(question, context)
         return jsonify({'response': answer})
 
+    # ---------- PDF Generation (Premium only) ----------
+    @app.route('/api/pdf', methods=['POST'])
+    def generate_pdf():
+        if not session.get('user_id'):
+            return jsonify({'status': 'error', 'message': 'Not logged in'}), 401
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT is_premium FROM users WHERE id = ?", (session['user_id'],))
+        row = c.fetchone()
+        conn.close()
+        if not row or row[0] != 1:
+            return jsonify({'status': 'error', 'message': 'Premium required'}), 403
+
+        # Generate report using the latest scan
+        outfile = f"report_{session['user_id']}_{int(time.time())}.pdf"
+        result = generate_compliance_report(target="127.0.0.1", output_file=outfile)
+        if result:
+            return jsonify({'status': 'ok', 'file': outfile})
+        else:
+            return jsonify({'status': 'error', 'message': 'No scan data available'})
+
+    @app.route('/download/<filename>')
+    def download_file(filename):
+        from flask import send_file
+        if not session.get('user_id'):
+            return redirect('/login')
+        # Security: only allow pdf files
+        if not filename.endswith('.pdf'):
+            return "Invalid file", 400
+        try:
+            return send_file(filename, as_attachment=True)
+        except:
+            return "File not found", 404
+
+    # ---------- Scan Endpoint (Web) ----------
     @app.route('/scan', methods=['POST'])
     def trigger_scan():
-        try:
-            open_services = scan_host("example.com", [80,443])
+        # Get parameters
+        data = request.get_json() or {}
+        target = data.get('target')
+        ports = data.get('ports', '1-1024')
+        cloud = data.get('cloud')
+        account_id = data.get('account_id')
+        auto_fix = data.get('auto_fix', 'false').lower() == 'true'
+
+        if not target:
+            return jsonify({'status': 'error', 'message': 'Target required'})
+
+        # Check premium status for auto-fix
+        user_id = session.get('user_id')
+        is_premium = False
+        if user_id:
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+            c.execute("SELECT is_premium FROM users WHERE id = ?", (user_id,))
+            row = c.fetchone()
+            is_premium = row and row[0] == 1
+            conn.close()
+
+        if auto_fix and not is_premium:
+            return jsonify({'status': 'error', 'message': 'Auto-fix is a premium feature'}), 403
+
+        # Parse ports
+        port_list = []
+        for part in ports.split(','):
+            if '-' in part:
+                s, e = map(int, part.split('-'))
+                port_list.extend(range(s, e+1))
+            else:
+                port_list.append(int(part))
+        port_list = sorted(set(port_list))
+
+        # Run scan in background
+        def run_scan():
+            # 1) Port scan
+            open_services = scan_host(target, port_list, threads=50)
             findings = []
-            if open_services:
-                save_scan("example.com", "web", "default", open_services, findings)
-            return jsonify({'status': 'ok', 'message': f'Scan completed, found {len(open_services)} open ports.'})
+
+            # 2) Cloud checks if cloud provided and account_id
+            if cloud and account_id:
+                if cloud == 'aws':
+                    # Assume role or use default credentials
+                    session_aws = None
+                    try:
+                        sts = boto3.client('sts')
+                        role_arn = f"arn:aws:iam::{account_id}:role/Aegis-Scanner"
+                        response = sts.assume_role(RoleArn=role_arn, RoleSessionName="AegisWeb")
+                        creds = response['Credentials']
+                        session_aws = boto3.Session(
+                            aws_access_key_id=creds['AccessKeyId'],
+                            aws_secret_access_key=creds['SecretAccessKey'],
+                            aws_session_token=creds['SessionToken']
+                        )
+                    except:
+                        session_aws = None  # fallback to default
+                    findings.extend(check_aws_s3_public(session_aws, account_id))
+                    findings.extend(check_aws_security_groups(session_aws, account_id))
+                    # Attack graph (premium only)
+                    if is_premium:
+                        resources = fetch_aws_resources(account_id, session_aws)
+                        G = build_attack_graph(resources)
+                        paths = find_attack_paths(G)
+                        # Store paths somewhere? Not needed now.
+                elif cloud == 'gcp':
+                    findings.extend(check_gcp_storage_public(account_id))
+                elif cloud == 'azure':
+                    findings.extend(check_azure_blob_public(account_id))
+                elif cloud == 'oci':
+                    findings.extend(check_oci_storage_public(account_id))
+
+            # 3) Web vulnerabilities if target is a URL and premium
+            if target.startswith(('http://','https://')):
+                if is_premium:
+                    # Directory discovery
+                    dir_findings = discover_directories(target)
+                    for f in dir_findings:
+                        findings.append((
+                            f"Directory found: {f['path']} (HTTP {f['status']})",
+                            "Web Security",
+                            5.0 if f['risk'] == "MEDIUM" else 2.0,
+                            f['risk'],
+                            "DIR_DISCOVERY",
+                            f['path']
+                        ))
+                    # SQLi
+                    sqli_findings = test_sqli(target)
+                    for f in sqli_findings:
+                        findings.append((
+                            f"SQL Injection: {f['url']}",
+                            "Web Security",
+                            9.0,
+                            f['risk'],
+                            "SQLI",
+                            f['url']
+                        ))
+                    # XSS
+                    xss_findings = test_xss(target)
+                    for f in xss_findings:
+                        findings.append((
+                            f"XSS: {f['url']}",
+                            "Web Security",
+                            7.5,
+                            f['risk'],
+                            "XSS",
+                            f['url']
+                        ))
+
+            # 4) Save to DB
+            save_scan(target, cloud or 'web', account_id or 'default', open_services, findings)
+
+            # 5) Auto-fix if premium and requested
+            if is_premium and auto_fix:
+                fixable = []
+                for f in findings:
+                    if len(f) >= 5:
+                        sev = f[3]
+                        fix_type = f[4] if len(f) > 4 else None
+                        extra = f[5] if len(f) > 5 else None
+                        if sev in ["HIGH", "CRITICAL"] and fix_type is not None:
+                            fixable.append((f, fix_type, extra))
+                for item in fixable:
+                    f, fix_type, extra = item
+                    desc = f[0]
+                    sev = f[3]
+                    success = False
+                    msg = ""
+                    if fix_type == "S3_PUBLIC" and extra:
+                        success, msg = fix_s3_public(extra, cloud="aws", account=account_id or "default")
+                    elif fix_type == "SG_OPEN" and extra:
+                        group_id, port = extra
+                        success, msg = fix_security_group_rule(group_id, port, cloud="aws", account=account_id or "default")
+                    elif fix_type == "GCP_PUBLIC" and extra:
+                        success, msg = fix_gcp_bucket_public(extra, cloud="gcp", account=account_id or "default")
+                    elif fix_type == "OCI_PUBLIC" and extra:
+                        ns, bucket = extra
+                        success, msg = fix_oci_bucket_public(ns, bucket, cloud="oci", account=account_id or "default")
+                    else:
+                        msg = f"⚠️ No auto-fix implemented for {fix_type}"
+                    if success:
+                        save_alert(cloud or "web", account_id or "default", desc, sev, fixed=True)
+                    else:
+                        save_alert(cloud or "web", account_id or "default", f"❌ FAILED: {desc}", sev, fixed=False)
+
+        # Start thread
+        thread = threading.Thread(target=run_scan)
+        thread.start()
+
+        return jsonify({'status': 'ok', 'message': 'Scan started. Results will appear shortly.'})
+
+    # ---------- Stripe Integration ----------
+    @app.route('/create-checkout-session', methods=['POST'])
+    def create_checkout():
+        if not STRIPE_AVAILABLE:
+            return jsonify({'error': 'Stripe not configured'}), 400
+        if not session.get('user_id'):
+            return jsonify({'error': 'Not logged in'}), 401
+        try:
+            checkout_session = stripe.checkout.Session.create(
+                payment_method_types=['card'],
+                line_items=[{
+                    'price': 'price_1Q...',  # Replace with your actual price ID
+                    'quantity': 1,
+                }],
+                mode='subscription',
+                success_url=url_for('payment_success', _external=True) + '?session_id={CHECKOUT_SESSION_ID}',
+                cancel_url=url_for('payment_cancel', _external=True),
+                metadata={'user_id': str(session['user_id'])}
+            )
+            return jsonify({'sessionId': checkout_session['id']})
         except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)})
+            return jsonify({'error': str(e)}), 400
+
+    @app.route('/payment-success')
+    def payment_success():
+        session_id = request.args.get('session_id')
+        if session_id and STRIPE_AVAILABLE:
+            try:
+                checkout = stripe.checkout.Session.retrieve(session_id)
+                user_id = checkout.metadata.get('user_id')
+                if user_id:
+                    conn = sqlite3.connect(DB_NAME)
+                    c = conn.cursor()
+                    c.execute("UPDATE users SET is_premium = 1 WHERE id = ?", (user_id,))
+                    conn.commit()
+                    conn.close()
+                    return "Payment successful! You are now premium. <a href='/dashboard'>Go to Dashboard</a>"
+            except:
+                pass
+        return "Something went wrong. Please contact support."
+
+    @app.route('/payment-cancel')
+    def payment_cancel():
+        return "Payment cancelled. You can try again later."
 
     def start_dashboard(port=5000):
         port = int(os.environ.get('PORT', port))
@@ -2233,7 +2588,7 @@ if FLASK_AVAILABLE:
 # ---------- MAIN ----------
 def main():
     parser = argparse.ArgumentParser(description="Aegis – Global Cloud & API Security")
-    parser.add_argument("host", help="Target IP or hostname")
+    parser.add_argument("host", nargs="?", help="Target IP or hostname")
     parser.add_argument("-p", "--ports", default="1-1024", help="Port range")
     parser.add_argument("-t", "--threads", type=int, default=50)
     parser.add_argument("--api", action="store_true", help="Run OWASP API checks")
@@ -2312,6 +2667,11 @@ def main():
         else:
             print("✅ No attack paths found.")
         return
+
+    # If no host provided, show help
+    if not args.host:
+        parser.print_help()
+        sys.exit(0)
 
     if args.db:
         init_db()
