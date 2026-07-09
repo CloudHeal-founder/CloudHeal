@@ -123,6 +123,14 @@ def init_db():
     conn.commit()
     conn.close()
 
+def ensure_db_tables():
+    """Create all tables if they don't exist (called at app startup)."""
+    try:
+        init_db()
+        print("[+] Database tables verified/created.")
+    except Exception as e:
+        print(f"[!] Error creating database tables: {e}")
+
 def save_scan(target, cloud, account, open_services, findings):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -1586,6 +1594,9 @@ DASHBOARD_HTML = """
 """
 
 if FLASK_AVAILABLE:
+    # Ensure database tables exist at startup
+    ensure_db_tables()
+
     app = Flask(__name__)
     app.secret_key = os.urandom(24)
 
