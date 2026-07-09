@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Aegis – Full SaaS with OTP Email Verification
+Aegis – Full SaaS with OTP Email Verification, First/Last Name
 Built by Austin Emmanuel – 19‑year‑old founder from Nigeria
 """
 import socket
@@ -121,6 +121,8 @@ def init_db():
         email TEXT UNIQUE,
         password TEXT,
         company TEXT,
+        first_name TEXT,
+        last_name TEXT,
         created_at TEXT,
         verified INTEGER DEFAULT 0
     )''')
@@ -1290,7 +1292,7 @@ def run_fix_chain(args):
             print(f"[!] Unknown cloud: {cloud}")
     print("[*] Multi-cloud scanning complete.")
 
-# ---------- HTML TEMPLATES (FIXED) ----------
+# ---------- HTML TEMPLATES ----------
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html>
@@ -1300,9 +1302,7 @@ LOGIN_HTML = """
         body { background: #0a0e17; color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .login-box { background: #111b26; padding: 40px; border-radius: 12px; border: 1px solid #1e2a3a; width: 350px; }
         .login-box h1 { text-align: center; color: #00d4ff; margin-bottom: 30px; }
-        .login-box .field { position: relative; margin-bottom: 15px; }
-        .login-box .field input { width: 100%; padding: 12px; padding-left: 45px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
-        .login-box .toggle-password { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #8ba0b8; cursor: pointer; font-size: 18px; }
+        .login-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
         .login-box button { width: 100%; padding: 12px; background: #00d4ff; color: #0a0e17; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
         .login-box button:hover { background: #7b2ffc; color: #fff; }
         .login-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
@@ -1320,10 +1320,7 @@ LOGIN_HTML = """
         {% endif %}
         <form method="POST" action="/login">
             <input type="email" name="email" placeholder="Email" required>
-            <div class="field">
-                <input type="password" name="password" id="loginPassword" placeholder="Password" required>
-                <button type="button" class="toggle-password" onclick="togglePassword('loginPassword', this)">👁️</button>
-            </div>
+            <input type="password" name="password" placeholder="Password" required>
             <div class="forgot"><a href="#">Forgot password?</a></div>
             <button type="submit">Login</button>
         </form>
@@ -1331,18 +1328,6 @@ LOGIN_HTML = """
             Don't have an account? <a href="/signup">Sign up</a>
         </div>
     </div>
-    <script>
-        function togglePassword(id, btn) {
-            const input = document.getElementById(id);
-            if (input.type === "password") {
-                input.type = "text";
-                btn.textContent = "🙈";
-            } else {
-                input.type = "password";
-                btn.textContent = "👁️";
-            }
-        }
-    </script>
 </body>
 </html>
 """
@@ -1354,16 +1339,16 @@ SIGNUP_HTML = """
     <title>Aegis – Sign Up</title>
     <style>
         body { background: #0a0e17; color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .signup-box { background: #111b26; padding: 40px; border-radius: 12px; border: 1px solid #1e2a3a; width: 350px; }
+        .signup-box { background: #111b26; padding: 40px; border-radius: 12px; border: 1px solid #1e2a3a; width: 360px; }
         .signup-box h1 { text-align: center; color: #00d4ff; margin-bottom: 30px; }
-        .signup-box .field { position: relative; margin-bottom: 15px; }
-        .signup-box .field input { width: 100%; padding: 12px; padding-left: 45px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
-        .signup-box .toggle-password { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #8ba0b8; cursor: pointer; font-size: 18px; }
+        .signup-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
         .signup-box button { width: 100%; padding: 12px; background: #00d4ff; color: #0a0e17; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
         .signup-box button:hover { background: #7b2ffc; color: #fff; }
         .signup-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
         .signup-box .link { text-align: center; margin-top: 15px; color: #8ba0b8; font-size: 14px; }
         .signup-box .link a { color: #00d4ff; text-decoration: none; }
+        .name-row { display: flex; gap: 10px; }
+        .name-row input { flex: 1; }
     </style>
 </head>
 <body>
@@ -1374,30 +1359,18 @@ SIGNUP_HTML = """
         <div class="error">{{ error }}</div>
         {% endif %}
         <form method="POST" action="/signup">
-            <input type="text" name="company" placeholder="Company Name" required>
-            <input type="email" name="email" placeholder="Email" required>
-            <div class="field">
-                <input type="password" name="password" id="signupPassword" placeholder="Password" required>
-                <button type="button" class="toggle-password" onclick="togglePassword('signupPassword', this)">👁️</button>
+            <div class="name-row">
+                <input type="text" name="first_name" placeholder="First Name" required>
+                <input type="text" name="last_name" placeholder="Last Name" required>
             </div>
+            <input type="email" name="email" placeholder="Email" required>
+            <input type="password" name="password" placeholder="Password" required>
             <button type="submit">Sign Up</button>
         </form>
         <div class="link">
             Already have an account? <a href="/login">Login</a>
         </div>
     </div>
-    <script>
-        function togglePassword(id, btn) {
-            const input = document.getElementById(id);
-            if (input.type === "password") {
-                input.type = "text";
-                btn.textContent = "🙈";
-            } else {
-                input.type = "password";
-                btn.textContent = "👁️";
-            }
-        }
-    </script>
 </body>
 </html>
 """
@@ -1416,6 +1389,7 @@ OTP_HTML = """
         .otp-box button:hover { background: #7b2ffc; color: #fff; }
         .otp-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
         .otp-box .info { color: #8ba0b8; text-align: center; margin-bottom: 20px; font-size: 14px; }
+        .otp-box .otp-display { background: #0a0e17; border: 1px solid #2ed573; border-radius: 8px; padding: 12px; text-align: center; margin-bottom: 20px; color: #2ed573; font-size: 28px; letter-spacing: 6px; font-weight: bold; }
         .otp-box .resend { text-align: center; margin-top: 15px; color: #8ba0b8; font-size: 14px; }
         .otp-box .resend a { color: #00d4ff; text-decoration: none; }
     </style>
@@ -1423,7 +1397,9 @@ OTP_HTML = """
 <body>
     <div class="otp-box">
         <h1>📧 Verify Email</h1>
-        <div class="info">We sent a 6‑digit code to <strong>{{ email }}</strong>. Enter it below.</div>
+        <div class="info">We sent a 6‑digit code to <strong>{{ email }}</strong>.</div>
+        <div class="otp-display">🔑 {{ otp }}</div>
+        <div class="info" style="font-size:12px; color:#5a6a7a;">(Copy this code and paste it below)</div>
         {% if error %}
         <div class="error">{{ error }}</div>
         {% endif %}
@@ -2098,7 +2074,7 @@ if FLASK_AVAILABLE:
             if user and check_password_hash(user[2], password):
                 session['user_id'] = user[0]
                 session['email'] = user[1]
-                session['company'] = user[3]
+                session['company'] = user[3]  # combined first+last
                 return redirect('/dashboard')
             else:
                 return render_template_string(LOGIN_HTML, error="Invalid email or account not verified")
@@ -2107,11 +2083,11 @@ if FLASK_AVAILABLE:
     @app.route('/signup', methods=['GET', 'POST'])
     def signup():
         if request.method == 'POST':
+            first_name = request.form['first_name']
+            last_name = request.form['last_name']
             email = request.form['email']
-            company = request.form['company']
             password = generate_password_hash(request.form['password'])
-            
-            # Check if already registered
+
             conn = sqlite3.connect(DB_NAME)
             c = conn.cursor()
             c.execute("SELECT * FROM users WHERE email = ?", (email,))
@@ -2120,42 +2096,43 @@ if FLASK_AVAILABLE:
                 conn.close()
                 return render_template_string(SIGNUP_HTML, error="Email already registered.")
 
-            # Generate OTP and store in pending dict
+            # Generate OTP
             otp = generate_otp()
+            company = f"{first_name} {last_name}"
             pending_users[email] = {
                 'company': company,
+                'first_name': first_name,
+                'last_name': last_name,
                 'password': password,
                 'otp': otp,
                 'expiry': datetime.datetime.now() + datetime.timedelta(minutes=10)
             }
             conn.close()
-            
+
             # Send OTP (print to console / logs)
             send_otp_email(email, otp)
-            
-            # Render OTP page
-            return render_template_string(OTP_HTML, email=email, error=None)
+
+            # Render OTP page WITH the OTP visible (for demo)
+            return render_template_string(OTP_HTML, email=email, error=None, otp=otp)
         return render_template_string(SIGNUP_HTML, error=None)
 
     @app.route('/verify-otp', methods=['POST'])
     def verify_otp():
         otp = request.form['otp']
-        # We need to identify which user is verifying. We'll use a session variable or email from form.
-        # Since we don't have session yet, we'll use a hidden field or just guess the last pending user.
-        # For simplicity, we'll check all pending users (in production, use session or email input).
-        # Actually the best: check for any pending user with this OTP.
         email = None
         for e, data in pending_users.items():
             if data['otp'] == otp and datetime.datetime.now() < data['expiry']:
                 email = e
                 break
-        
+
         if email:
             data = pending_users.pop(email)
             conn = sqlite3.connect(DB_NAME)
             c = conn.cursor()
-            c.execute("INSERT INTO users (email, password, company, created_at, verified) VALUES (?, ?, ?, datetime('now'), 1)",
-                      (email, data['password'], data['company']))
+            c.execute("""
+                INSERT INTO users (email, password, company, first_name, last_name, created_at, verified)
+                VALUES (?, ?, ?, ?, ?, datetime('now'), 1)
+            """, (email, data['password'], data['company'], data['first_name'], data['last_name']))
             conn.commit()
             conn.close()
             return redirect('/login')
@@ -2164,7 +2141,6 @@ if FLASK_AVAILABLE:
 
     @app.route('/resend-otp')
     def resend_otp():
-        # Simplified: just redirect to signup
         return redirect('/signup')
 
     @app.route('/logout')
