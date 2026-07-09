@@ -18,6 +18,8 @@ import threading
 import webbrowser
 import requests
 import urllib3
+import subprocess
+import time
 from typing import Dict, List, Tuple, Optional
 from urllib.request import urlopen, Request
 from urllib.error import URLError
@@ -1366,7 +1368,7 @@ SIGNUP_HTML = """
 </html>
 """
 
-# ---------- WEB DASHBOARD (NEW) ----------
+# ---------- WEB DASHBOARD (UPGRADED) ----------
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html>
@@ -1379,7 +1381,6 @@ DASHBOARD_HTML = """
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
         body { background: #0a0e17; color: #e0e6ed; display: flex; height: 100vh; overflow: hidden; }
         
-        /* ─── Sidebar ─── */
         .sidebar { width: 220px; background: #0d1520; border-right: 1px solid #1e2a3a; padding: 20px 0; height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; }
         .sidebar .logo { font-size: 22px; font-weight: 700; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; padding: 0 20px; margin-bottom: 30px; }
         .sidebar .logo span { font-size: 12px; display: block; -webkit-text-fill-color: #5a6a7a; }
@@ -1389,15 +1390,17 @@ DASHBOARD_HTML = """
         .sidebar .logout { margin-top: 40px; border-top: 1px solid #1e2a3a; padding-top: 20px; color: #ff4757; }
         .sidebar .logout:hover { border-left-color: #ff4757; }
         
-        /* ─── Main Content ─── */
         .main { margin-left: 220px; flex: 1; padding: 20px 30px; overflow-y: auto; height: 100vh; }
         .topbar { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid #1e2a3a; margin-bottom: 25px; }
         .topbar h1 { font-size: 24px; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
         .topbar .user { display: flex; align-items: center; gap: 15px; }
         .topbar .user .email { color: #8ba0b8; font-size: 14px; }
         .topbar .user .badge { background: #1e2a3a; padding: 6px 14px; border-radius: 20px; font-size: 12px; color: #8ba0b8; }
+        .topbar .user .last-updated { color: #5a6a7a; font-size: 12px; }
+        .scan-btn { background: #00d4ff; color: #0a0e17; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .scan-btn:hover { background: #7b2ffc; color: #fff; }
+        .scan-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         
-        /* ─── Stats ─── */
         .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 30px; }
         .stat-card { background: #111b26; border-radius: 12px; padding: 20px; border: 1px solid #1e2a3a; transition: transform 0.2s; }
         .stat-card:hover { transform: translateY(-3px); border-color: #00d4ff; }
@@ -1405,15 +1408,12 @@ DASHBOARD_HTML = """
         .stat-card .label { font-size: 14px; color: #8ba0b8; margin-top: 4px; display: flex; align-items: center; gap: 8px; }
         .stat-card.critical .number { color: #ff4757; }
         .stat-card.fixed .number { color: #2ed573; }
-        .stat-card .icon { font-size: 20px; }
         
-        /* ─── Charts ─── */
         .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 30px; }
         .chart-box { background: #111b26; border-radius: 12px; padding: 20px; border: 1px solid #1e2a3a; }
         .chart-box h3 { font-size: 16px; color: #8ba0b8; margin-bottom: 15px; }
         .chart-box canvas { max-height: 200px; width: 100% !important; }
         
-        /* ─── Tables ─── */
         .section { background: #111b26; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #1e2a3a; }
         .section h2 { font-size: 18px; margin-bottom: 15px; color: #8ba0b8; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -1429,6 +1429,8 @@ DASHBOARD_HTML = """
         .empty { color: #5a6a7a; font-style: italic; }
         .refresh-btn { background: #1e2a3a; border: none; color: #e0e6ed; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; }
         .refresh-btn:hover { background: #2a3a4a; }
+        .scan-loading { display: inline-block; width: 16px; height: 16px; border: 2px solid #8ba0b8; border-top-color: #00d4ff; border-radius: 50%; animation: spin 0.8s linear infinite; margin-left: 10px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
         
         @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; } .chart-row { grid-template-columns: 1fr; } .stats { grid-template-columns: 1fr 1fr; } }
     </style>
@@ -1453,7 +1455,10 @@ DASHBOARD_HTML = """
             <div class="user">
                 <span class="badge">{{ company }}</span>
                 <span class="email">{{ email }}</span>
-                <button class="refresh-btn" onclick="location.reload()">⟳ Refresh</button>
+                <span class="last-updated" id="lastUpdated">Last updated: --</span>
+                <button class="scan-btn" id="scanBtn" onclick="startScan()">⚡ Scan Now</button>
+                <button class="refresh-btn" onclick="loadData()">⟳ Refresh</button>
+                <div id="scanSpinner" style="display:inline;"></div>
             </div>
         </div>
 
@@ -1497,6 +1502,8 @@ DASHBOARD_HTML = """
     </div>
 
     <script>
+        let scanInProgress = false;
+
         async function loadData() {
             try {
                 const res = await fetch('/api/data');
@@ -1506,23 +1513,32 @@ DASHBOARD_HTML = """
                 document.getElementById('criticalFindings').textContent = data.critical_findings || 0;
                 document.getElementById('fixedIssues').textContent = data.fixed_issues || 0;
                 document.getElementById('openPorts').textContent = data.open_ports || 0;
+                document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
 
                 // Scans table
                 const scansTable = document.getElementById('scansTable');
-                scansTable.innerHTML = data.scans.map(s => `
-                    <tr><td>${s[0]}</td><td>${s[1]}</td><td>${s[2]}</td><td>${s[3]}</td></tr>
-                `).join('') || '<tr><td colspan="4" class="empty">No scans yet</td></tr>';
+                if (data.scans && data.scans.length > 0) {
+                    scansTable.innerHTML = data.scans.map(s => `
+                        <tr><td>${s[0]}</td><td>${s[1]}</td><td>${s[2]}</td><td>${s[3]}</td></tr>
+                    `).join('');
+                } else {
+                    scansTable.innerHTML = `<tr><td colspan="4" class="empty">No scans yet. Click "Scan Now" to start your first scan!</td></tr>`;
+                }
 
                 // Alerts table
                 const alertsTable = document.getElementById('alertsTable');
-                alertsTable.innerHTML = data.alerts.map(a => `
-                    <tr>
-                        <td>${a[0]}</td>
-                        <td>${a[1]}</td>
-                        <td class="severity-${a[2].toLowerCase()}">${a[2]}</td>
-                        <td class="fixed-${a[3] ? 'true' : 'false'}">${a[3] ? '✅ Fixed' : '⚠️ Open'}</td>
-                    </tr>
-                `).join('') || '<tr><td colspan="4" class="empty">No alerts yet</td></tr>';
+                if (data.alerts && data.alerts.length > 0) {
+                    alertsTable.innerHTML = data.alerts.map(a => `
+                        <tr>
+                            <td>${a[0]}</td>
+                            <td>${a[1]}</td>
+                            <td class="severity-${a[2].toLowerCase()}">${a[2]}</td>
+                            <td class="fixed-${a[3] ? 'true' : 'false'}">${a[3] ? '✅ Fixed' : '⚠️ Open'}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    alertsTable.innerHTML = `<tr><td colspan="4" class="empty">No alerts yet.</td></tr>`;
+                }
 
                 // Attack paths
                 const pathsDiv = document.getElementById('attackPaths');
@@ -1543,9 +1559,19 @@ DASHBOARD_HTML = """
 
                 // Severity breakdown
                 const sevCounts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, INFO: 0 };
-                data.alerts.forEach(a => { if (sevCounts[a[2]] !== undefined) sevCounts[a[2]]++; });
+                if (data.alerts) {
+                    data.alerts.forEach(a => { if (sevCounts[a[2]] !== undefined) sevCounts[a[2]]++; });
+                }
+                // If no data, show demo zeros
+                if (data.alerts.length === 0) {
+                    // keep zeros
+                }
 
-                new Chart(ctx2, {
+                // Destroy previous charts if they exist to avoid duplication
+                if (window.sevChart) window.sevChart.destroy();
+                if (window.trendChart) window.trendChart.destroy();
+
+                window.sevChart = new Chart(ctx2, {
                     type: 'doughnut',
                     data: {
                         labels: ['Critical', 'High', 'Medium', 'Low', 'Info'],
@@ -1556,19 +1582,28 @@ DASHBOARD_HTML = """
                             borderWidth: 3
                         }]
                     },
-                    options: { responsive: true, plugins: { legend: { labels: { color: '#e0e6ed' } } } }
+                    options: { 
+                        responsive: true, 
+                        plugins: { legend: { labels: { color: '#e0e6ed' } } },
+                        animation: { animateRotate: true, duration: 1000 }
+                    }
                 });
 
-                // Trend chart (using scan data)
-                const labels = data.scans.map(s => s[0].slice(0, 10)).reverse();
-                const counts = data.scans.map(s => s[3]).reverse();
-                new Chart(ctx1, {
+                // Trend chart
+                let labels = data.scans.map(s => s[0].slice(0, 10)).reverse();
+                let counts = data.scans.map(s => s[3]).reverse();
+                if (labels.length === 0) {
+                    // Demo data – show a flat line if no scans
+                    labels = ['No Data'];
+                    counts = [0];
+                }
+                window.trendChart = new Chart(ctx1, {
                     type: 'line',
                     data: {
-                        labels: labels.length ? labels : ['No Data'],
+                        labels: labels,
                         datasets: [{
                             label: 'Findings',
-                            data: counts.length ? counts : [0],
+                            data: counts,
                             borderColor: '#00d4ff',
                             backgroundColor: 'rgba(0,212,255,0.1)',
                             fill: true,
@@ -1578,14 +1613,46 @@ DASHBOARD_HTML = """
                     options: {
                         responsive: true,
                         plugins: { legend: { labels: { color: '#e0e6ed' } } },
-                        scales: { x: { ticks: { color: '#8ba0b8' } }, y: { ticks: { color: '#8ba0b8' } } }
+                        scales: { x: { ticks: { color: '#8ba0b8' } }, y: { ticks: { color: '#8ba0b8' } } },
+                        animation: { duration: 800 }
                     }
                 });
+
+                // Re-enable scan button after loading
+                document.getElementById('scanBtn').disabled = false;
+                scanInProgress = false;
+                document.getElementById('scanSpinner').innerHTML = '';
 
             } catch (e) {
                 console.error('Error loading data:', e);
             }
         }
+
+        async function startScan() {
+            if (scanInProgress) return;
+            scanInProgress = true;
+            document.getElementById('scanBtn').disabled = true;
+            document.getElementById('scanSpinner').innerHTML = '<div class="scan-loading"></div>';
+
+            try {
+                const res = await fetch('/scan', { method: 'POST' });
+                const result = await res.json();
+                if (result.status === 'ok') {
+                    alert('Scan completed successfully! Results will refresh.');
+                    loadData();
+                } else {
+                    alert('Scan failed: ' + (result.message || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Error starting scan: ' + e.message);
+            } finally {
+                document.getElementById('scanBtn').disabled = false;
+                document.getElementById('scanSpinner').innerHTML = '';
+                scanInProgress = false;
+            }
+        }
+
+        // Initial load and refresh every 30s
         loadData();
         setInterval(loadData, 30000);
     </script>
@@ -1594,9 +1661,7 @@ DASHBOARD_HTML = """
 """
 
 if FLASK_AVAILABLE:
-    # Ensure database tables exist at startup
     ensure_db_tables()
-
     app = Flask(__name__)
     app.secret_key = os.urandom(24)
 
@@ -1629,12 +1694,20 @@ if FLASK_AVAILABLE:
                 return render_template_string(LOGIN_HTML, error="Invalid email or password")
         return render_template_string(LOGIN_HTML, error=None)
 
+    # Business email validation (block free domains)
+    FREE_DOMAINS = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 'mail.com', 'protonmail.com', 'icloud.com']
     @app.route('/signup', methods=['GET', 'POST'])
     def signup():
         if request.method == 'POST':
             email = request.form['email']
             company = request.form['company']
             password = generate_password_hash(request.form['password'])
+
+            # Check if email is from a free domain
+            domain = email.split('@')[-1].lower()
+            if domain in FREE_DOMAINS:
+                return render_template_string(SIGNUP_HTML, error="Please use a business email address (personal emails are not allowed).")
+
             try:
                 conn = sqlite3.connect(DB_NAME)
                 c = conn.cursor()
@@ -1688,6 +1761,29 @@ if FLASK_AVAILABLE:
             'alerts': alerts,
             'attack_paths': paths
         })
+
+    @app.route('/scan', methods=['POST'])
+    def trigger_scan():
+        """Run a background scan on example.com and save results."""
+        try:
+            # Run a lightweight scan on example.com to generate demo data
+            # In production, you'd run the full scanner with user cloud credentials.
+            # For now, we simulate a scan by calling our own scan_host on example.com.
+            import subprocess
+            # Run a simple scan on example.com port 80,443
+            cmd = [sys.executable, '-c', 
+                   'import scanner; open_services = scanner.scan_host("example.com", [80,443]); print(open_services)']
+            # Actually, we can directly call scan_host from this module.
+            # Since we have the functions defined, we can run a small scan.
+            # We'll do a quick scan on example.com ports 80,443
+            open_services = scan_host("example.com", [80,443])
+            findings = []
+            # Add a dummy finding if needed
+            if open_services:
+                save_scan("example.com", "web", "default", open_services, findings)
+            return jsonify({'status': 'ok', 'message': f'Scan completed, found {len(open_services)} open ports.'})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)})
 
     def start_dashboard(port=5000):
         port = int(os.environ.get('PORT', port))
