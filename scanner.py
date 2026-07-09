@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Aegis – Orca-style Dashboard + Working Scan + AI Assistant
+Aegis – Reverted Dashboard + Manual Upgrade (no Stripe)
 Built by Austin Emmanuel – 19‑year‑old founder from Nigeria
 """
 import socket
@@ -16,26 +16,12 @@ import requests
 import urllib3
 import random
 import string
-import math
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 
 # ----- FLASK -----
 from flask import Flask, render_template_string, jsonify, request, redirect, url_for, session, flash
 from werkzeug.security import generate_password_hash, check_password_hash
-
-# ----- STRIPE (optional) -----
-try:
-    import stripe
-    STRIPE_AVAILABLE = True
-except ImportError:
-    STRIPE_AVAILABLE = False
-
-if STRIPE_AVAILABLE:
-    stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_...')
-    STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', 'pk_test_...')
-else:
-    STRIPE_PUBLISHABLE_KEY = ''
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -77,7 +63,6 @@ DB_NAME = "apcss_global.db"
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    # Create tables if they don't exist (with new schema)
     c.execute('''CREATE TABLE IF NOT EXISTS scans (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
@@ -109,24 +94,19 @@ def init_db():
         last_name TEXT,
         created_at TEXT,
         verified INTEGER DEFAULT 0,
-        plan TEXT DEFAULT 'free',
-        stripe_customer_id TEXT
+        plan TEXT DEFAULT 'free'
     )''')
-    # ----- MIGRATION: Add missing columns for existing databases -----
+    # Migration: add missing columns
     try:
         c.execute("ALTER TABLE scans ADD COLUMN user_id INTEGER")
     except sqlite3.OperationalError:
-        pass  # column already exists
+        pass
     try:
         c.execute("ALTER TABLE alerts ADD COLUMN user_id INTEGER")
     except sqlite3.OperationalError:
         pass
     try:
         c.execute("ALTER TABLE alerts ADD COLUMN fixed INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        c.execute("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT")
     except sqlite3.OperationalError:
         pass
     try:
@@ -191,47 +171,6 @@ def get_alerts(user_id, limit=20):
     rows = c.fetchall()
     conn.close()
     return rows
-
-def get_all_alerts(user_id):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('SELECT severity, fixed FROM alerts WHERE user_id = ?', (user_id,))
-    rows = c.fetchall()
-    conn.close()
-    return rows
-
-def count_critical_high(user_id):
-    rows = get_all_alerts(user_id)
-    critical = sum(1 for s, f in rows if s == 'CRITICAL' and f == 0)
-    high = sum(1 for s, f in rows if s == 'HIGH' and f == 0)
-    return critical, high
-
-def get_resolved_vs_created(user_id):
-    rows = get_all_alerts(user_id)
-    created = len(rows)
-    resolved = sum(1 for s, f in rows if f == 1)
-    return created, resolved
-
-def get_category_breakdown(user_id):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute('SELECT message, severity FROM alerts WHERE user_id = ?', (user_id,))
-    rows = c.fetchall()
-    conn.close()
-    categories = {}
-    for msg, sev in rows:
-        if 'S3' in msg or 'bucket' in msg:
-            cat = 'Suspicious Activity'
-        elif 'IAM' in msg or 'Role' in msg:
-            cat = 'IAM'
-        elif 'SG' in msg or 'Security Group' in msg or 'port' in msg:
-            cat = 'Network'
-        elif 'GCP' in msg or 'Azure' in msg or 'OCI' in msg:
-            cat = 'Cloud'
-        else:
-            cat = 'Other'
-        categories[cat] = categories.get(cat, 0) + 1
-    return categories
 
 # ---------- Demo Data Generator ----------
 def generate_demo_scans(user_id):
@@ -448,44 +387,6 @@ def fix_s3_public(bucket_name):
     except Exception as e:
         return False, str(e)
 
-# ---------- Stripe Helpers ----------
-def create_checkout_session(user_id, email):
-    if not STRIPE_AVAILABLE:
-        return None
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT stripe_customer_id FROM users WHERE id = ?", (user_id,))
-        row = c.fetchone()
-        customer_id = row[0] if row else None
-        conn.close()
-
-        if not customer_id:
-            customer = stripe.Customer.create(email=email)
-            customer_id = customer.id
-            conn = sqlite3.connect(DB_NAME)
-            c = conn.cursor()
-            c.execute("UPDATE users SET stripe_customer_id = ? WHERE id = ?", (customer_id, user_id))
-            conn.commit()
-            conn.close()
-
-        checkout_session = stripe.checkout.Session.create(
-            customer=customer_id,
-            payment_method_types=['card'],
-            line_items=[{
-                'price': 'price_1Q...',  # Replace with your actual Price ID
-                'quantity': 1,
-            }],
-            mode='subscription',
-            success_url='https://yourdomain.com/dashboard?success=true',
-            cancel_url='https://yourdomain.com/dashboard?canceled=true',
-            metadata={'user_id': user_id}
-        )
-        return checkout_session.url
-    except Exception as e:
-        print(f"Stripe error: {e}")
-        return None
-
 # ---------- Shared CSS (Blue/White Theme) ----------
 SHARED_CSS = """
 body {
@@ -568,163 +469,33 @@ LANDING_HTML = """
             align-items: center;
             gap: 60px;
         }
-        .left {
-            flex: 1.2;
-        }
-        .right {
-            flex: 0.8;
-            background: rgba(255,255,255,0.05);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 40px;
-            border: 1px solid rgba(0, 163, 255, 0.3);
-            box-shadow: 0 8px 32px rgba(0, 100, 255, 0.15);
-        }
-        .logo {
-            font-size: 32px;
-            font-weight: 700;
-            color: #00a3ff;
-            margin-bottom: 10px;
-        }
-        .tagline {
-            font-size: 14px;
-            color: #88bbdd;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            margin-bottom: 30px;
-        }
-        .left h1 {
-            font-size: 42px;
-            line-height: 1.2;
-            margin-bottom: 20px;
-            background: linear-gradient(135deg, #00a3ff, #0055ff);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-        .left .desc {
-            color: #aaccee;
-            font-size: 18px;
-            line-height: 1.6;
-            margin-bottom: 30px;
-            max-width: 600px;
-        }
-        .feature-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px 30px;
-            margin-bottom: 30px;
-        }
-        .feature-grid .item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #cce0ff;
-            font-size: 15px;
-        }
-        .feature-grid .item::before {
-            content: "🛡️";
-            color: #00a3ff;
-            font-size: 18px;
-        }
-        .btn-primary {
-            display: inline-block;
-            background: #00a3ff;
-            color: #fff;
-            padding: 14px 36px;
-            border-radius: 40px;
-            font-weight: 600;
-            text-decoration: none;
-            transition: 0.3s;
-            border: none;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        .btn-primary:hover {
-            background: #0055ff;
-            transform: scale(1.03);
-        }
-        .right h2 {
-            color: #00a3ff;
-            font-size: 26px;
-            margin-bottom: 8px;
-        }
-        .right .welcome-sub {
-            color: #88bbdd;
-            font-size: 14px;
-            margin-bottom: 25px;
-        }
-        .right input {
-            width: 100%;
-            padding: 12px;
-            margin: 8px 0;
-            background: #0a1a2a;
-            border: 1px solid #2a4a6a;
-            color: #e0f0ff;
-            border-radius: 8px;
-            box-sizing: border-box;
-        }
-        .right input:focus {
-            border-color: #00a3ff;
-            outline: none;
-        }
-        .right .login-btn {
-            width: 100%;
-            padding: 12px;
-            background: #00a3ff;
-            color: #fff;
-            font-weight: bold;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: 0.3s;
-            margin-top: 10px;
-        }
-        .right .login-btn:hover {
-            background: #0055ff;
-        }
-        .right .links {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 15px;
-            font-size: 14px;
-        }
-        .right .links a {
-            color: #00a3ff;
-            text-decoration: none;
-        }
-        .right .links a:hover {
-            text-decoration: underline;
-        }
-        .trust-badges {
-            display: flex;
-            justify-content: space-around;
-            margin-top: 25px;
-            padding-top: 20px;
-            border-top: 1px solid rgba(0, 163, 255, 0.15);
-        }
-        .trust-badges .badge {
-            text-align: center;
-            color: #88bbdd;
-            font-size: 13px;
-        }
-        .trust-badges .badge strong {
-            display: block;
-            color: #e0f0ff;
-            font-size: 16px;
-        }
+        .left { flex: 1.2; }
+        .right { flex: 0.8; background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border-radius: 20px; padding: 40px; border: 1px solid rgba(0, 163, 255, 0.3); box-shadow: 0 8px 32px rgba(0, 100, 255, 0.15); }
+        .logo { font-size: 32px; font-weight: 700; color: #00a3ff; margin-bottom: 10px; }
+        .tagline { font-size: 14px; color: #88bbdd; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 30px; }
+        .left h1 { font-size: 42px; line-height: 1.2; margin-bottom: 20px; background: linear-gradient(135deg, #00a3ff, #0055ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .left .desc { color: #aaccee; font-size: 18px; line-height: 1.6; margin-bottom: 30px; max-width: 600px; }
+        .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 30px; margin-bottom: 30px; }
+        .feature-grid .item { display: flex; align-items: center; gap: 10px; color: #cce0ff; font-size: 15px; }
+        .feature-grid .item::before { content: "🛡️"; color: #00a3ff; font-size: 18px; }
+        .btn-primary { display: inline-block; background: #00a3ff; color: #fff; padding: 14px 36px; border-radius: 40px; font-weight: 600; text-decoration: none; transition: 0.3s; border: none; cursor: pointer; font-size: 16px; }
+        .btn-primary:hover { background: #0055ff; transform: scale(1.03); }
+        .right h2 { color: #00a3ff; font-size: 26px; margin-bottom: 8px; }
+        .right .welcome-sub { color: #88bbdd; font-size: 14px; margin-bottom: 25px; }
+        .right input { width: 100%; padding: 12px; margin: 8px 0; background: #0a1a2a; border: 1px solid #2a4a6a; color: #e0f0ff; border-radius: 8px; box-sizing: border-box; }
+        .right input:focus { border-color: #00a3ff; outline: none; }
+        .right .login-btn { width: 100%; padding: 12px; background: #00a3ff; color: #fff; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.3s; margin-top: 10px; }
+        .right .login-btn:hover { background: #0055ff; }
+        .right .links { display: flex; justify-content: space-between; margin-top: 15px; font-size: 14px; }
+        .right .links a { color: #00a3ff; text-decoration: none; }
+        .right .links a:hover { text-decoration: underline; }
+        .trust-badges { display: flex; justify-content: space-around; margin-top: 25px; padding-top: 20px; border-top: 1px solid rgba(0, 163, 255, 0.15); }
+        .trust-badges .badge { text-align: center; color: #88bbdd; font-size: 13px; }
+        .trust-badges .badge strong { display: block; color: #e0f0ff; font-size: 16px; }
         @media (max-width: 900px) {
-            .landing-container {
-                flex-direction: column;
-                padding: 20px;
-                gap: 30px;
-            }
-            .right {
-                width: 100%;
-                padding: 30px;
-            }
-            .feature-grid {
-                grid-template-columns: 1fr;
-            }
+            .landing-container { flex-direction: column; padding: 20px; gap: 30px; }
+            .right { width: 100%; padding: 30px; }
+            .feature-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -735,9 +506,7 @@ LANDING_HTML = """
             <div class="logo">🛡️ Aegis</div>
             <div class="tagline">Automated Protection of Cloud Security Systems</div>
             <h1>Comprehensive Security Testing Platform</h1>
-            <div class="desc">
-                Identify security vulnerabilities in web applications, APIs, networks, mobile apps and cloud infrastructure with our comprehensive security tools.
-            </div>
+            <div class="desc">Identify security vulnerabilities in web applications, APIs, networks, mobile apps and cloud infrastructure with our comprehensive security tools.</div>
             <div class="feature-grid">
                 <div class="item">Comprehensive Security Scanning</div>
                 <div class="item">API Security Testing</div>
@@ -775,49 +544,18 @@ LANDING_HTML = """
 </html>
 """
 
-# ===== LOGIN, SIGNUP, OTP (unchanged) =====
+# ===== LOGIN, SIGNUP, OTP =====
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html>
 <head><title>Aegis – Login</title>
 <style>
     {{ SHARED_CSS }}
-    .login-box {
-        max-width: 400px;
-        margin: 80px auto;
-        padding: 40px;
-        text-align: center;
-    }
-    .login-box h2 {
-        font-size: 28px;
-        color: #00a3ff;
-        margin-bottom: 10px;
-    }
-    .login-box input {
-        width: 100%;
-        padding: 12px;
-        margin: 10px 0;
-        background: #0a1a2a;
-        border: 1px solid #2a4a6a;
-        color: #e0f0ff;
-        border-radius: 8px;
-        box-sizing: border-box;
-    }
-    .login-box input:focus {
-        border-color: #00a3ff;
-        outline: none;
-    }
-    .login-box button {
-        width: 100%;
-        padding: 12px;
-        background: #00a3ff;
-        color: #fff;
-        font-weight: bold;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: 0.3s;
-    }
+    .login-box { max-width: 400px; margin: 80px auto; padding: 40px; text-align: center; }
+    .login-box h2 { font-size: 28px; color: #00a3ff; margin-bottom: 10px; }
+    .login-box input { width: 100%; padding: 12px; margin: 10px 0; background: #0a1a2a; border: 1px solid #2a4a6a; color: #e0f0ff; border-radius: 8px; box-sizing: border-box; }
+    .login-box input:focus { border-color: #00a3ff; outline: none; }
+    .login-box button { width: 100%; padding: 12px; background: #00a3ff; color: #fff; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.3s; }
     .login-box button:hover { background: #0055ff; }
     .login-box a { color: #00a3ff; text-decoration: none; }
     .error { color: #ff4757; margin-bottom: 10px; }
@@ -845,42 +583,11 @@ SIGNUP_HTML = """
 <head><title>Aegis – Sign Up</title>
 <style>
     {{ SHARED_CSS }}
-    .signup-box {
-        max-width: 450px;
-        margin: 60px auto;
-        padding: 40px;
-        text-align: center;
-    }
-    .signup-box h2 {
-        font-size: 28px;
-        color: #00a3ff;
-        margin-bottom: 10px;
-    }
-    .signup-box input, .signup-box select {
-        width: 100%;
-        padding: 12px;
-        margin: 8px 0;
-        background: #0a1a2a;
-        border: 1px solid #2a4a6a;
-        color: #e0f0ff;
-        border-radius: 8px;
-        box-sizing: border-box;
-    }
-    .signup-box input:focus, .signup-box select:focus {
-        border-color: #00a3ff;
-        outline: none;
-    }
-    .signup-box button {
-        width: 100%;
-        padding: 12px;
-        background: #00a3ff;
-        color: #fff;
-        font-weight: bold;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: 0.3s;
-    }
+    .signup-box { max-width: 450px; margin: 60px auto; padding: 40px; text-align: center; }
+    .signup-box h2 { font-size: 28px; color: #00a3ff; margin-bottom: 10px; }
+    .signup-box input, .signup-box select { width: 100%; padding: 12px; margin: 8px 0; background: #0a1a2a; border: 1px solid #2a4a6a; color: #e0f0ff; border-radius: 8px; box-sizing: border-box; }
+    .signup-box input:focus, .signup-box select:focus { border-color: #00a3ff; outline: none; }
+    .signup-box button { width: 100%; padding: 12px; background: #00a3ff; color: #fff; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.3s; }
     .signup-box button:hover { background: #0055ff; }
     .signup-box a { color: #00a3ff; text-decoration: none; }
     .name-row { display: flex; gap: 10px; }
@@ -916,57 +623,13 @@ OTP_HTML = """
 <head><title>Aegis – Verify Email</title>
 <style>
     {{ SHARED_CSS }}
-    .otp-box {
-        max-width: 400px;
-        margin: 80px auto;
-        padding: 40px;
-        text-align: center;
-    }
-    .otp-box h2 {
-        font-size: 28px;
-        color: #00a3ff;
-        margin-bottom: 10px;
-    }
+    .otp-box { max-width: 400px; margin: 80px auto; padding: 40px; text-align: center; }
+    .otp-box h2 { font-size: 28px; color: #00a3ff; margin-bottom: 10px; }
     .otp-box .info { color: #88bbdd; margin-bottom: 20px; }
-    .otp-box .otp-display {
-        background: #0a1a2a;
-        border: 1px solid #00a3ff;
-        border-radius: 8px;
-        padding: 16px;
-        margin-bottom: 20px;
-        color: #00a3ff;
-        font-size: 32px;
-        letter-spacing: 8px;
-        font-weight: bold;
-        font-family: monospace;
-    }
-    .otp-box input {
-        width: 100%;
-        padding: 12px;
-        margin: 10px 0;
-        background: #0a1a2a;
-        border: 1px solid #2a4a6a;
-        color: #e0f0ff;
-        border-radius: 8px;
-        text-align: center;
-        font-size: 20px;
-        letter-spacing: 6px;
-        box-sizing: border-box;
-    }
-    .otp-box input:focus {
-        border-color: #00a3ff;
-        outline: none;
-    }
-    .otp-box button {
-        width: 100%;
-        padding: 12px;
-        background: #00a3ff;
-        color: #fff;
-        font-weight: bold;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-    }
+    .otp-box .otp-display { background: #0a1a2a; border: 1px solid #00a3ff; border-radius: 8px; padding: 16px; margin-bottom: 20px; color: #00a3ff; font-size: 32px; letter-spacing: 8px; font-weight: bold; font-family: monospace; }
+    .otp-box input { width: 100%; padding: 12px; margin: 10px 0; background: #0a1a2a; border: 1px solid #2a4a6a; color: #e0f0ff; border-radius: 8px; text-align: center; font-size: 20px; letter-spacing: 6px; box-sizing: border-box; }
+    .otp-box input:focus { border-color: #00a3ff; outline: none; }
+    .otp-box button { width: 100%; padding: 12px; background: #00a3ff; color: #fff; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; }
     .otp-box button:hover { background: #0055ff; }
     .otp-box .resend { margin-top: 20px; color: #88bbdd; }
     .otp-box .resend a { color: #00a3ff; text-decoration: none; }
@@ -991,12 +654,12 @@ OTP_HTML = """
 </html>
 """
 
-# ===== NEW ORCA-STYLE DASHBOARD =====
+# ===== DASHBOARD (Reverted to previous design) =====
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Aegis – Executive Dashboard</title>
+    <title>Aegis Security Dashboard</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -1107,38 +770,34 @@ DASHBOARD_HTML = """
         }
         .upgrade-btn:hover { background: #ff5500; transform: scale(1.03); }
 
-        /* Scan form – compact */
         .scan-form {
             background: rgba(10, 20, 40, 0.7);
             backdrop-filter: blur(10px);
             border-radius: 12px;
-            padding: 15px 20px;
+            padding: 20px;
             margin-bottom: 25px;
             border: 1px solid rgba(0, 163, 255, 0.2);
             display: flex;
             flex-wrap: wrap;
-            gap: 12px;
+            gap: 15px;
             align-items: flex-end;
         }
         .scan-form .field {
             display: flex;
             flex-direction: column;
             gap: 4px;
-            flex: 1 0 140px;
+            flex: 1 0 150px;
         }
         .scan-form .field label {
-            font-size: 11px;
+            font-size: 12px;
             color: #88bbdd;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
         .scan-form .field input, .scan-form .field select {
-            padding: 6px 10px;
+            padding: 8px 12px;
             background: #0a1a2a;
             border: 1px solid #2a4a6a;
             color: #e0f0ff;
             border-radius: 6px;
-            font-size: 13px;
         }
         .scan-form .field input:focus, .scan-form .field select:focus {
             outline: none;
@@ -1148,144 +807,64 @@ DASHBOARD_HTML = """
             background: #00a3ff;
             color: #fff;
             border: none;
-            padding: 8px 20px;
+            padding: 10px 24px;
             border-radius: 20px;
             font-weight: bold;
             cursor: pointer;
             transition: 0.2s;
-            font-size: 14px;
         }
         .scan-form .submit-btn:hover { background: #0055ff; }
         .scan-form .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        /* Executive Risk Summary – 2-column layout */
-        .executive-summary {
+        .stats {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: 20px;
-            margin-bottom: 25px;
+            margin-bottom: 30px;
         }
-        .score-card {
+        .stat-card {
             background: rgba(10, 20, 40, 0.6);
             backdrop-filter: blur(5px);
             border-radius: 12px;
             padding: 20px;
             border: 1px solid rgba(0, 163, 255, 0.1);
-            text-align: center;
+            transition: 0.2s;
         }
-        .score-card .number {
-            font-size: 48px;
+        .stat-card:hover {
+            border-color: rgba(0, 163, 255, 0.3);
+            transform: translateY(-3px);
+        }
+        .stat-card .number {
+            font-size: 28px;
             font-weight: 700;
             color: #00a3ff;
         }
-        .score-card .label {
+        .stat-card .label {
             font-size: 14px;
             color: #88bbdd;
-            text-transform: uppercase;
-            letter-spacing: 1px;
         }
-        .score-card .sub {
-            font-size: 12px;
-            color: #5a7a9a;
-            margin-top: 5px;
-        }
-        .alerts-overview {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 15px;
-        }
-        .alert-stat {
-            background: rgba(10, 20, 40, 0.6);
-            backdrop-filter: blur(5px);
-            border-radius: 12px;
-            padding: 15px;
-            border: 1px solid rgba(0, 163, 255, 0.1);
-            text-align: center;
-        }
-        .alert-stat .number {
-            font-size: 28px;
-            font-weight: 700;
-        }
-        .alert-stat .number.critical { color: #ff4757; }
-        .alert-stat .number.high { color: #ff6b81; }
-        .alert-stat .number.total { color: #00a3ff; }
-        .alert-stat .trend {
-            font-size: 12px;
-            color: #2ed573;
-        }
-        .alert-stat .label {
-            font-size: 12px;
-            color: #88bbdd;
-            text-transform: uppercase;
-        }
+        .stat-card.critical .number { color: #ff4757; }
+        .stat-card.fixed .number { color: #2ed573; }
 
-        /* Category breakdown */
-        .category-breakdown {
-            background: rgba(10, 20, 40, 0.6);
-            backdrop-filter: blur(5px);
-            border-radius: 12px;
-            padding: 20px;
-            border: 1px solid rgba(0, 163, 255, 0.1);
-            margin-bottom: 25px;
-        }
-        .category-breakdown h3 {
-            font-size: 16px;
-            color: #88bbdd;
-            margin-bottom: 15px;
-        }
-        .category-bar {
-            display: flex;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        .category-bar .cat-name {
-            width: 120px;
-            font-size: 13px;
-            color: #cce0ff;
-        }
-        .category-bar .bar-bg {
-            flex: 1;
-            height: 20px;
-            background: #1a2a4a;
-            border-radius: 10px;
-            overflow: hidden;
-        }
-        .category-bar .bar-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #00a3ff, #0055ff);
-            border-radius: 10px;
-            transition: width 0.6s;
-        }
-        .category-bar .cat-count {
-            width: 40px;
-            text-align: right;
-            font-size: 13px;
-            color: #e0f0ff;
-            margin-left: 10px;
-        }
-
-        /* Charts – 2 column layout */
         .chart-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 25px;
+            gap: 25px;
+            margin-bottom: 30px;
         }
         .chart-box {
             background: rgba(10, 20, 40, 0.6);
             backdrop-filter: blur(5px);
             border-radius: 12px;
-            padding: 15px;
+            padding: 20px;
             border: 1px solid rgba(0, 163, 255, 0.1);
         }
         .chart-box h3 {
-            font-size: 14px;
+            font-size: 16px;
             color: #88bbdd;
-            margin-bottom: 10px;
-            text-align: center;
+            margin-bottom: 15px;
         }
 
-        /* Tables */
         .section {
             background: rgba(10, 20, 40, 0.6);
             backdrop-filter: blur(5px);
@@ -1295,23 +874,23 @@ DASHBOARD_HTML = """
             border: 1px solid rgba(0, 163, 255, 0.1);
         }
         .section h2 {
-            font-size: 16px;
+            font-size: 18px;
             margin-bottom: 15px;
             color: #88bbdd;
         }
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 13px;
+            font-size: 14px;
         }
         th {
             text-align: left;
-            padding: 8px 10px;
+            padding: 10px;
             color: #88bbdd;
             border-bottom: 1px solid rgba(0, 163, 255, 0.2);
         }
         td {
-            padding: 8px 10px;
+            padding: 10px;
             border-bottom: 1px solid rgba(0, 163, 255, 0.05);
         }
         .severity-critical { color: #ff4757; font-weight: bold; }
@@ -1321,8 +900,15 @@ DASHBOARD_HTML = """
         .fixed-true { color: #2ed573; }
         .fixed-false { color: #f9ca24; }
         .empty { color: #5a7a9a; font-style: italic; }
+        .path-chain {
+            font-family: monospace;
+            font-size: 13px;
+            background: #0a1a2a;
+            padding: 6px 12px;
+            border-radius: 6px;
+            display: inline-block;
+        }
 
-        /* AI Assistant */
         .ai-bubble {
             position: fixed;
             bottom: 30px;
@@ -1428,11 +1014,9 @@ DASHBOARD_HTML = """
 
         @media (max-width: 768px) {
             .sidebar { display: none; }
-            .main { margin-left: 0; padding: 15px; }
-            .executive-summary { grid-template-columns: 1fr; }
-            .alerts-overview { grid-template-columns: 1fr; }
+            .main { margin-left: 0; }
             .chart-row { grid-template-columns: 1fr; }
-            .scan-form .field { flex: 1 0 100%; }
+            .stats { grid-template-columns: 1fr 1fr; }
             .ai-chat { width: 300px; right: 10px; bottom: 90px; }
         }
     </style>
@@ -1451,13 +1035,13 @@ DASHBOARD_HTML = """
 
         <div class="main">
             <div class="topbar">
-                <h1>📊 Executive Dashboard</h1>
+                <h1>📊 Dashboard</h1>
                 <div class="user">
                     <span class="badge">{{ company }}</span>
                     <span class="plan">{{ plan|upper }}</span>
                     <span class="email">{{ email }}</span>
                     {% if plan == 'free' %}
-                        <a href="/create-checkout" class="upgrade-btn">⬆ Upgrade to Pro</a>
+                        <a href="/upgrade-to-pro" class="upgrade-btn">⬆ Upgrade to Pro</a>
                     {% endif %}
                     <button class="refresh-btn" onclick="loadData()">⟳ Refresh</button>
                 </div>
@@ -1466,15 +1050,15 @@ DASHBOARD_HTML = """
             <!-- Scan Form -->
             <div class="scan-form">
                 <div class="field">
-                    <label>Target</label>
-                    <input type="text" id="scanTarget" placeholder="e.g. 192.168.1.1" value="scanme.nmap.org">
+                    <label>Target (IP / Domain)</label>
+                    <input type="text" id="scanTarget" placeholder="e.g. 192.168.1.1 or example.com" value="scanme.nmap.org">
                 </div>
                 <div class="field">
                     <label>Port Range</label>
-                    <input type="text" id="scanPorts" placeholder="1-1024" value="1-1024">
+                    <input type="text" id="scanPorts" placeholder="e.g. 1-1024, 80, 443" value="1-1024">
                 </div>
                 <div class="field">
-                    <label>Cloud (premium)</label>
+                    <label>Cloud (premium only)</label>
                     <select id="scanCloud">
                         <option value="none">None</option>
                         <option value="aws">AWS</option>
@@ -1484,47 +1068,24 @@ DASHBOARD_HTML = """
                     </select>
                 </div>
                 <div class="field">
-                    <label>Account ID</label>
-                    <input type="text" id="scanAccount" placeholder="optional">
+                    <label>Account ID (optional)</label>
+                    <input type="text" id="scanAccount" placeholder="e.g. 123456789012">
                 </div>
                 <button class="submit-btn" id="scanBtn" onclick="startScan()">🚀 Start Scan</button>
             </div>
 
-            <!-- Executive Risk Summary -->
-            <div class="executive-summary" id="executiveSummary">
-                <div class="score-card">
-                    <div class="label">Security Score</div>
-                    <div class="number" id="securityScore">-</div>
-                    <div class="sub">Based on critical/high vulnerabilities</div>
-                </div>
-                <div class="alerts-overview">
-                    <div class="alert-stat">
-                        <div class="number critical" id="criticalCount">-</div>
-                        <div class="label">Critical</div>
-                        <div class="trend" id="criticalTrend">-</div>
-                    </div>
-                    <div class="alert-stat">
-                        <div class="number high" id="highCount">-</div>
-                        <div class="label">High</div>
-                        <div class="trend" id="highTrend">-</div>
-                    </div>
-                    <div class="alert-stat">
-                        <div class="number total" id="totalAlerts">-</div>
-                        <div class="label">Total Alerts</div>
-                    </div>
-                </div>
+            <!-- Stats -->
+            <div class="stats" id="stats">
+                <div class="stat-card"><div class="number" id="totalScans">-</div><div class="label">📋 Total Scans</div></div>
+                <div class="stat-card critical"><div class="number" id="criticalFindings">-</div><div class="label">🔥 Critical</div></div>
+                <div class="stat-card fixed"><div class="number" id="fixedIssues">-</div><div class="label">✅ Fixed</div></div>
+                <div class="stat-card"><div class="number" id="openPorts">-</div><div class="label">🔌 Open Ports</div></div>
             </div>
 
-            <!-- Category Breakdown -->
-            <div class="category-breakdown" id="categoryBreakdown">
-                <h3>🔎 Security Score Breakdown</h3>
-                <div id="categoryBars"></div>
-            </div>
-
-            <!-- Charts Row -->
+            <!-- Charts -->
             <div class="chart-row">
                 <div class="chart-box"><h3>📈 Vulnerability Trend</h3><canvas id="trendChart"></canvas></div>
-                <div class="chart-box"><h3>📊 Created vs Resolved</h3><canvas id="resolvedChart"></canvas></div>
+                <div class="chart-box"><h3>📊 Severity Breakdown</h3><canvas id="severityChart"></canvas></div>
             </div>
 
             <!-- Recent Scans -->
@@ -1532,6 +1093,9 @@ DASHBOARD_HTML = """
 
             <!-- Alerts -->
             <div class="section"><h2>🔔 Alerts</h2><table><thead><tr><th>Timestamp</th><th>Message</th><th>Severity</th><th>Fixed</th></tr></thead><tbody id="alertsTable"></tbody></table></div>
+
+            <!-- Attack Paths -->
+            <div class="section"><h2>🔥 Attack Paths</h2><div id="attackPaths"></div></div>
         </div>
     </div>
 
@@ -1615,40 +1179,14 @@ DASHBOARD_HTML = """
 
         async function loadData() {
             try {
-                const res = await fetch('/api/dashboard-data');
+                const res = await fetch('/api/data');
                 const data = await res.json();
 
-                // Security Score
-                document.getElementById('securityScore').textContent = data.security_score || '-';
-                document.getElementById('criticalCount').textContent = data.critical_count || 0;
-                document.getElementById('highCount').textContent = data.high_count || 0;
-                document.getElementById('totalAlerts').textContent = data.total_alerts || 0;
-                document.getElementById('criticalTrend').textContent = data.critical_trend || '-';
-                document.getElementById('highTrend').textContent = data.high_trend || '-';
+                document.getElementById('totalScans').textContent = data.total_scans || 0;
+                document.getElementById('criticalFindings').textContent = data.critical_findings || 0;
+                document.getElementById('fixedIssues').textContent = data.fixed_issues || 0;
+                document.getElementById('openPorts').textContent = data.open_ports || 0;
 
-                // Category breakdown
-                const catBars = document.getElementById('categoryBars');
-                if (data.categories && Object.keys(data.categories).length > 0) {
-                    const total = Object.values(data.categories).reduce((a,b) => a+b, 0);
-                    let html = '';
-                    for (const [cat, count] of Object.entries(data.categories)) {
-                        const pct = total > 0 ? Math.round((count/total)*100) : 0;
-                        html += `
-                            <div class="category-bar">
-                                <span class="cat-name">${cat}</span>
-                                <div class="bar-bg">
-                                    <div class="bar-fill" style="width:${pct}%"></div>
-                                </div>
-                                <span class="cat-count">${count}</span>
-                            </div>
-                        `;
-                    }
-                    catBars.innerHTML = html;
-                } else {
-                    catBars.innerHTML = '<p class="empty">No data available.</p>';
-                }
-
-                // Scans table
                 const scansTable = document.getElementById('scansTable');
                 if (data.scans && data.scans.length > 0) {
                     scansTable.innerHTML = data.scans.map(s => `<tr><td>${s[0]}</td><td>${s[1]}</td><td>${s[2] || '-'}</td><td>${s[3]}</td><td>${s[4]}</td></tr>`).join('');
@@ -1656,7 +1194,6 @@ DASHBOARD_HTML = """
                     scansTable.innerHTML = `<tr><td colspan="5" class="empty">No scans yet. Use the form above.</td></tr>`;
                 }
 
-                // Alerts table
                 const alertsTable = document.getElementById('alertsTable');
                 if (data.alerts && data.alerts.length > 0) {
                     alertsTable.innerHTML = data.alerts.map(a => `<tr><td>${a[0]}</td><td>${a[1]}</td><td class="severity-${a[3].toLowerCase()}">${a[3]}</td><td class="fixed-${a[4] ? 'true' : 'false'}">${a[4] ? '✅ Fixed' : '⚠️ Open'}</td></tr>`).join('');
@@ -1664,12 +1201,42 @@ DASHBOARD_HTML = """
                     alertsTable.innerHTML = `<tr><td colspan="4" class="empty">No alerts yet.</td></tr>`;
                 }
 
+                // Attack paths
+                const pathsDiv = document.getElementById('attackPaths');
+                if (data.attack_paths && data.attack_paths.length > 0) {
+                    pathsDiv.innerHTML = data.attack_paths.map((path, i) => `
+                        <div style="margin-bottom: 8px; padding: 10px 14px; background: #0a1a2a; border-radius: 8px; border-left: 3px solid #ff4757;">
+                            <strong>Path ${i+1}:</strong>
+                            <span class="path-chain">${path.join(' → ')}</span>
+                        </div>
+                    `).join('');
+                } else {
+                    pathsDiv.innerHTML = '<span class="empty">✅ No attack paths found.</span>';
+                }
+
                 // Charts
-                // Trend chart (scans over time)
-                const ctx1 = document.getElementById('trendChart').getContext('2d');
+                const sevCounts = {CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0, INFO:0};
+                if (data.alerts) data.alerts.forEach(a => { if (sevCounts[a[3]] !== undefined) sevCounts[a[3]]++; });
+                const ctx2 = document.getElementById('severityChart').getContext('2d');
+                if (window.sevChart) window.sevChart.destroy();
+                window.sevChart = new Chart(ctx2, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Critical','High','Medium','Low','Info'],
+                        datasets: [{
+                            data: [sevCounts.CRITICAL, sevCounts.HIGH, sevCounts.MEDIUM, sevCounts.LOW, sevCounts.INFO],
+                            backgroundColor: ['#ff4757','#ff6b81','#f9ca24','#2ed573','#88bbdd'],
+                            borderColor: '#0a0e1a',
+                            borderWidth: 3
+                        }]
+                    },
+                    options: { responsive: true, plugins: { legend: { labels: { color: '#e0f0ff' } } } }
+                });
+
                 const labels = data.scans.map(s => s[0].slice(0, 10)).reverse();
                 const counts = data.scans.map(s => s[4]).reverse();
-                if (labels.length === 0) { labels.push('No Data'); counts.push(0); }
+                if (labels.length === 0) { labels = ['No Data']; counts = [0]; }
+                const ctx1 = document.getElementById('trendChart').getContext('2d');
                 if (window.trendChart) window.trendChart.destroy();
                 window.trendChart = new Chart(ctx1, {
                     type: 'line',
@@ -1690,27 +1257,6 @@ DASHBOARD_HTML = """
                         scales: { x: { ticks: { color: '#88bbdd' } }, y: { ticks: { color: '#88bbdd' } } }
                     }
                 });
-
-                // Created vs Resolved (pie chart)
-                const ctx2 = document.getElementById('resolvedChart').getContext('2d');
-                if (window.resolvedChart) window.resolvedChart.destroy();
-                window.resolvedChart = new Chart(ctx2, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['Resolved', 'Open'],
-                        datasets: [{
-                            data: [data.resolved_count || 0, data.open_count || 0],
-                            backgroundColor: ['#2ed573', '#ff4757'],
-                            borderColor: '#0a0e1a',
-                            borderWidth: 3
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: { legend: { labels: { color: '#e0f0ff' } } }
-                    }
-                });
-
             } catch(e) {
                 console.error('Error loading data:', e);
             }
@@ -1723,38 +1269,18 @@ DASHBOARD_HTML = """
 </html>
 """
 
-# ===== PRICING (unchanged) =====
+# ===== PRICING (optional) =====
 PRICING_HTML = """
 <!DOCTYPE html>
 <html>
 <head><title>Aegis – Pricing</title>
 <style>
     {{ SHARED_CSS }}
-    .pricing-box {
-        max-width: 1000px;
-        margin: 60px auto;
-        padding: 40px;
-        text-align: center;
-    }
-    .pricing-box h1 {
-        font-size: 42px;
-        color: #00a3ff;
-        margin-bottom: 10px;
-    }
+    .pricing-box { max-width: 1000px; margin: 60px auto; padding: 40px; text-align: center; }
+    .pricing-box h1 { font-size: 42px; color: #00a3ff; margin-bottom: 10px; }
     .pricing-box .sub { color: #88bbdd; font-size: 18px; margin-bottom: 40px; }
-    .pricing-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 30px;
-    }
-    .card {
-        background: rgba(10, 20, 40, 0.6);
-        backdrop-filter: blur(10px);
-        border-radius: 12px;
-        padding: 30px;
-        border: 1px solid rgba(0, 163, 255, 0.1);
-        transition: 0.3s;
-    }
+    .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; }
+    .card { background: rgba(10, 20, 40, 0.6); backdrop-filter: blur(10px); border-radius: 12px; padding: 30px; border: 1px solid rgba(0, 163, 255, 0.1); transition: 0.3s; }
     .card:hover { border-color: #00a3ff; transform: translateY(-5px); }
     .card.popular { border-color: #00a3ff; }
     .card .plan { font-size: 24px; font-weight: 700; }
@@ -1763,16 +1289,7 @@ PRICING_HTML = """
     .card ul { list-style: none; padding: 0; text-align: left; margin: 20px 0; }
     .card ul li { padding: 8px 0; border-bottom: 1px solid rgba(0, 163, 255, 0.1); color: #88bbdd; }
     .card ul li:before { content: "✅ "; color: #2ed573; }
-    .btn {
-        display: inline-block;
-        background: #00a3ff;
-        color: #fff;
-        padding: 10px 30px;
-        border-radius: 30px;
-        font-weight: 600;
-        text-decoration: none;
-        transition: 0.2s;
-    }
+    .btn { display: inline-block; background: #00a3ff; color: #fff; padding: 10px 30px; border-radius: 30px; font-weight: 600; text-decoration: none; transition: 0.2s; }
     .btn:hover { background: #0055ff; }
     .back-link { display: inline-block; margin-top: 40px; color: #00a3ff; text-decoration: none; }
     .back-link:hover { text-decoration: underline; }
@@ -1861,7 +1378,7 @@ def login():
             session['user_id'] = user[0]
             session['email'] = user[1]
             session['company'] = user[3]
-            session['plan'] = user[8]  # index 8 is plan (after verified)
+            session['plan'] = user[8]  # plan column index
             return redirect('/dashboard')
         else:
             return render_template_string(LOGIN_HTML, SHARED_CSS=SHARED_CSS, error="Invalid email or unverified account")
@@ -1943,81 +1460,44 @@ def dashboard():
         plan=plan
     )
 
-@app.route('/api/dashboard-data')
-def api_dashboard_data():
+# ----- Upgrade to Pro (manual toggle) -----
+@app.route('/upgrade-to-pro')
+def upgrade_to_pro():
+    if not session.get('user_id'):
+        return redirect('/login')
+    user_id = session['user_id']
+    set_user_plan(user_id, 'premium')
+    flash('Your account has been upgraded to Pro! 🎉', 'success')
+    return redirect('/dashboard')
+
+@app.route('/api/data')
+def api_data():
     if not session.get('user_id'):
         return jsonify({'error': 'Unauthorized'}), 401
     user_id = session['user_id']
     scans = get_scan_history(user_id)
-    alerts = get_alerts(user_id, 20)
+    alerts = get_alerts(user_id)
+    total_scans = len(scans)
+    critical_findings = sum(1 for a in alerts if a[3] == 'CRITICAL')
+    fixed_issues = sum(1 for a in alerts if a[4] == 1)
+    open_ports = scans[0][3] if scans else 0
 
-    critical, high = count_critical_high(user_id)
-    total_alerts = len(alerts)
-    security_score = 100
-    if total_alerts > 0:
-        penalty = (critical * 2 + high) / total_alerts * 20
-        security_score = max(0, min(100, int(100 - penalty)))
-
-    critical_trend = f"↓{critical}" if critical > 0 else "✓"
-    high_trend = f"↓{high}" if high > 0 else "✓"
-
-    categories = get_category_breakdown(user_id)
-    created, resolved = get_resolved_vs_created(user_id)
-    open_count = created - resolved
-
+    # Attack paths (mock for demo)
+    attack_paths = []
+    if scans:
+        attack_paths = [
+            ["🌐 Internet", "🛡️ SG", "🖥️ EC2", "📦 S3"],
+            ["🌐 Internet", "🛡️ SG", "🔑 IAM"]
+        ]
     return jsonify({
-        'security_score': security_score,
-        'critical_count': critical,
-        'high_count': high,
-        'total_alerts': total_alerts,
-        'critical_trend': critical_trend,
-        'high_trend': high_trend,
-        'categories': categories,
+        'total_scans': total_scans,
+        'critical_findings': critical_findings,
+        'fixed_issues': fixed_issues,
+        'open_ports': open_ports,
         'scans': scans,
         'alerts': alerts,
-        'resolved_count': resolved,
-        'open_count': open_count
+        'attack_paths': attack_paths
     })
-
-@app.route('/create-checkout')
-def create_checkout():
-    if not session.get('user_id'):
-        return redirect('/login')
-    user_id = session['user_id']
-    email = session['email']
-    if is_premium(user_id):
-        flash('You are already a premium member.', 'info')
-        return redirect('/dashboard')
-    if not STRIPE_AVAILABLE:
-        flash('Stripe is not configured. Please contact support.', 'danger')
-        return redirect('/dashboard')
-    checkout_url = create_checkout_session(user_id, email)
-    if checkout_url:
-        return redirect(checkout_url)
-    else:
-        flash('Failed to create checkout session. Please try again.', 'danger')
-        return redirect('/dashboard')
-
-@app.route('/stripe-webhook', methods=['POST'])
-def stripe_webhook():
-    if not STRIPE_AVAILABLE:
-        return jsonify({'error': 'Stripe not configured'}), 400
-    payload = request.get_data(as_text=True)
-    sig_header = request.headers.get('Stripe-Signature')
-    webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
-    try:
-        event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
-    except ValueError:
-        return jsonify({'error': 'Invalid payload'}), 400
-    except stripe.error.SignatureVerificationError:
-        return jsonify({'error': 'Invalid signature'}), 400
-
-    if event['type'] == 'checkout.session.completed':
-        session_obj = event['data']['object']
-        user_id = session_obj.get('metadata', {}).get('user_id')
-        if user_id:
-            set_user_plan(int(user_id), 'premium')
-    return jsonify({'status': 'success'}), 200
 
 @app.route('/api/scan', methods=['POST'])
 def api_scan():
@@ -2102,7 +1582,7 @@ def ask_ai():
     if not question:
         return jsonify({'response': 'Ask a question.'})
     # Placeholder – you can replace with Ollama or OpenAI
-    response = f"I received your question: '{question}'. This is a demo response. I'll connect to a real AI soon."
+    response = f"I received your question: '{question}'. This is a demo response."
     return jsonify({'response': response})
 
 # ---------- Main ----------
