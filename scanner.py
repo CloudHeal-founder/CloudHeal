@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Aegis – Full SaaS with Blue/White BBCLEM-style Landing, Working Scan
+Aegis – Orca-style Dashboard + Working Scan + AI Assistant
 Built by Austin Emmanuel – 19‑year‑old founder from Nigeria
 """
 import socket
@@ -16,16 +16,30 @@ import requests
 import urllib3
 import random
 import string
+import math
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 
 # ----- FLASK -----
-from flask import Flask, render_template_string, jsonify, request, redirect, url_for, session
+from flask import Flask, render_template_string, jsonify, request, redirect, url_for, session, flash
 from werkzeug.security import generate_password_hash, check_password_hash
+
+# ----- STRIPE (optional) -----
+try:
+    import stripe
+    STRIPE_AVAILABLE = True
+except ImportError:
+    STRIPE_AVAILABLE = False
+
+if STRIPE_AVAILABLE:
+    stripe.api_key = os.environ.get('STRIPE_SECRET_KEY', 'sk_test_...')
+    STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY', 'pk_test_...')
+else:
+    STRIPE_PUBLISHABLE_KEY = ''
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# ----- Optional cloud SDKs (skip if not installed) -----
+# ----- Optional cloud SDKs -----
 try:
     import boto3
     from botocore.exceptions import ClientError
@@ -94,7 +108,8 @@ def init_db():
         last_name TEXT,
         created_at TEXT,
         verified INTEGER DEFAULT 0,
-        plan TEXT DEFAULT 'free'
+        plan TEXT DEFAULT 'free',
+        stripe_customer_id TEXT
     )''')
     conn.commit()
     conn.close()
@@ -109,6 +124,13 @@ def get_user_plan(user_id):
 
 def is_premium(user_id):
     return get_user_plan(user_id) == 'premium'
+
+def set_user_plan(user_id, plan):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("UPDATE users SET plan = ? WHERE id = ?", (plan, user_id))
+    conn.commit()
+    conn.close()
 
 def save_scan(user_id, target, cloud, account, open_services, findings):
     conn = sqlite3.connect(DB_NAME)
@@ -147,6 +169,77 @@ def get_alerts(user_id, limit=20):
     rows = c.fetchall()
     conn.close()
     return rows
+
+def get_all_alerts(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute('SELECT severity, fixed FROM alerts WHERE user_id = ?', (user_id,))
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+def count_critical_high(user_id):
+    rows = get_all_alerts(user_id)
+    critical = sum(1 for s, f in rows if s == 'CRITICAL' and f == 0)
+    high = sum(1 for s, f in rows if s == 'HIGH' and f == 0)
+    return critical, high
+
+def get_resolved_vs_created(user_id):
+    rows = get_all_alerts(user_id)
+    created = len(rows)
+    resolved = sum(1 for s, f in rows if f == 1)
+    return created, resolved
+
+def get_category_breakdown(user_id):
+    # Map alert messages to categories
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute('SELECT message, severity FROM alerts WHERE user_id = ?', (user_id,))
+    rows = c.fetchall()
+    conn.close()
+    categories = {}
+    for msg, sev in rows:
+        if 'S3' in msg or 'bucket' in msg:
+            cat = 'Suspicious Activity'
+        elif 'IAM' in msg or 'Role' in msg:
+            cat = 'IAM'
+        elif 'SG' in msg or 'Security Group' in msg or 'port' in msg:
+            cat = 'Network'
+        elif 'GCP' in msg or 'Azure' in msg or 'OCI' in msg:
+            cat = 'Cloud'
+        else:
+            cat = 'Other'
+        categories[cat] = categories.get(cat, 0) + 1
+    return categories
+
+# ---------- Demo Data Generator ----------
+def generate_demo_scans(user_id):
+    if get_scan_history(user_id, 1):
+        return
+    targets = ['192.168.1.1', 'example.com', '10.0.0.5', 'api.test.com']
+    clouds = ['aws', 'gcp', 'azure', 'none']
+    for i in range(5):
+        ts = (datetime.datetime.now() - datetime.timedelta(minutes=random.randint(0, 120))).isoformat()
+        target = random.choice(targets)
+        cloud = random.choice(clouds)
+        open_ports = random.sample([22, 80, 443, 3306, 8080], k=random.randint(1, 3))
+        findings = []
+        for _ in range(random.randint(1, 5)):
+            sev = random.choice(['CRITICAL', 'HIGH', 'MEDIUM', 'INFO'])
+            findings.append((f"Sample finding {random.randint(1,100)}", "Demo", random.uniform(3,9), sev))
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute('''INSERT INTO scans (user_id, timestamp, target, cloud, account, open_ports, findings, total_open_ports, total_findings)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                  (user_id, ts, target, cloud, 'demo-account',
+                   json.dumps(open_ports),
+                   json.dumps(findings),
+                   len(open_ports), len(findings)))
+        for f in findings:
+            c.execute('INSERT INTO alerts (user_id, timestamp, cloud, account, message, severity, fixed) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                      (user_id, ts, cloud, 'demo-account', f[0], f[3], 0))
+        conn.commit()
+        conn.close()
 
 # ---------- Scanner Functions ----------
 COMMON_PORTS = {
@@ -334,6 +427,44 @@ def fix_s3_public(bucket_name):
     except Exception as e:
         return False, str(e)
 
+# ---------- Stripe Helpers ----------
+def create_checkout_session(user_id, email):
+    if not STRIPE_AVAILABLE:
+        return None
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT stripe_customer_id FROM users WHERE id = ?", (user_id,))
+        row = c.fetchone()
+        customer_id = row[0] if row else None
+        conn.close()
+
+        if not customer_id:
+            customer = stripe.Customer.create(email=email)
+            customer_id = customer.id
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+            c.execute("UPDATE users SET stripe_customer_id = ? WHERE id = ?", (customer_id, user_id))
+            conn.commit()
+            conn.close()
+
+        checkout_session = stripe.checkout.Session.create(
+            customer=customer_id,
+            payment_method_types=['card'],
+            line_items=[{
+                'price': 'price_1Q...',  # Replace with your actual Price ID
+                'quantity': 1,
+            }],
+            mode='subscription',
+            success_url='https://yourdomain.com/dashboard?success=true',
+            cancel_url='https://yourdomain.com/dashboard?canceled=true',
+            metadata={'user_id': user_id}
+        )
+        return checkout_session.url
+    except Exception as e:
+        print(f"Stripe error: {e}")
+        return None
+
 # ---------- Shared CSS (Blue/White Theme) ----------
 SHARED_CSS = """
 body {
@@ -399,7 +530,7 @@ body {
 }
 """
 
-# ===== LANDING PAGE (BBCLEM-style, blue/white) =====
+# ===== LANDING PAGE (same as before) =====
 LANDING_HTML = """
 <!DOCTYPE html>
 <html>
@@ -623,7 +754,7 @@ LANDING_HTML = """
 </html>
 """
 
-# ===== LOGIN =====
+# ===== LOGIN, SIGNUP, OTP (unchanged) =====
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html>
@@ -687,7 +818,6 @@ LOGIN_HTML = """
 </html>
 """
 
-# ===== SIGNUP =====
 SIGNUP_HTML = """
 <!DOCTYPE html>
 <html>
@@ -759,7 +889,6 @@ SIGNUP_HTML = """
 </html>
 """
 
-# ===== OTP =====
 OTP_HTML = """
 <!DOCTYPE html>
 <html>
@@ -841,12 +970,12 @@ OTP_HTML = """
 </html>
 """
 
-# ===== DASHBOARD (with scan form, stats, alerts, blue/white) =====
+# ===== NEW ORCA-STYLE DASHBOARD =====
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Aegis – Dashboard</title>
+    <title>Aegis – Executive Dashboard</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -945,35 +1074,50 @@ DASHBOARD_HTML = """
             cursor: pointer;
         }
         .refresh-btn:hover { background: rgba(0, 163, 255, 0.3); }
+        .upgrade-btn {
+            background: #ff6b00;
+            color: #fff;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .upgrade-btn:hover { background: #ff5500; transform: scale(1.03); }
 
+        /* Scan form – compact */
         .scan-form {
             background: rgba(10, 20, 40, 0.7);
             backdrop-filter: blur(10px);
             border-radius: 12px;
-            padding: 20px;
+            padding: 15px 20px;
             margin-bottom: 25px;
             border: 1px solid rgba(0, 163, 255, 0.2);
             display: flex;
             flex-wrap: wrap;
-            gap: 15px;
+            gap: 12px;
             align-items: flex-end;
         }
         .scan-form .field {
             display: flex;
             flex-direction: column;
             gap: 4px;
-            flex: 1 0 150px;
+            flex: 1 0 140px;
         }
         .scan-form .field label {
-            font-size: 12px;
+            font-size: 11px;
             color: #88bbdd;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .scan-form .field input, .scan-form .field select {
-            padding: 8px 12px;
+            padding: 6px 10px;
             background: #0a1a2a;
             border: 1px solid #2a4a6a;
             color: #e0f0ff;
             border-radius: 6px;
+            font-size: 13px;
         }
         .scan-form .field input:focus, .scan-form .field select:focus {
             outline: none;
@@ -983,64 +1127,144 @@ DASHBOARD_HTML = """
             background: #00a3ff;
             color: #fff;
             border: none;
-            padding: 10px 24px;
+            padding: 8px 20px;
             border-radius: 20px;
             font-weight: bold;
             cursor: pointer;
             transition: 0.2s;
+            font-size: 14px;
         }
         .scan-form .submit-btn:hover { background: #0055ff; }
         .scan-form .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        .stats {
+        /* Executive Risk Summary – 2-column layout */
+        .executive-summary {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            grid-template-columns: 1fr 1fr;
             gap: 20px;
-            margin-bottom: 30px;
+            margin-bottom: 25px;
         }
-        .stat-card {
+        .score-card {
             background: rgba(10, 20, 40, 0.6);
             backdrop-filter: blur(5px);
             border-radius: 12px;
             padding: 20px;
             border: 1px solid rgba(0, 163, 255, 0.1);
-            transition: 0.2s;
+            text-align: center;
         }
-        .stat-card:hover {
-            border-color: rgba(0, 163, 255, 0.3);
-            transform: translateY(-3px);
-        }
-        .stat-card .number {
-            font-size: 28px;
+        .score-card .number {
+            font-size: 48px;
             font-weight: 700;
             color: #00a3ff;
         }
-        .stat-card .label {
+        .score-card .label {
             font-size: 14px;
             color: #88bbdd;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
-        .stat-card.critical .number { color: #ff4757; }
-        .stat-card.fixed .number { color: #2ed573; }
+        .score-card .sub {
+            font-size: 12px;
+            color: #5a7a9a;
+            margin-top: 5px;
+        }
+        .alerts-overview {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+        }
+        .alert-stat {
+            background: rgba(10, 20, 40, 0.6);
+            backdrop-filter: blur(5px);
+            border-radius: 12px;
+            padding: 15px;
+            border: 1px solid rgba(0, 163, 255, 0.1);
+            text-align: center;
+        }
+        .alert-stat .number {
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .alert-stat .number.critical { color: #ff4757; }
+        .alert-stat .number.high { color: #ff6b81; }
+        .alert-stat .number.total { color: #00a3ff; }
+        .alert-stat .trend {
+            font-size: 12px;
+            color: #2ed573;
+        }
+        .alert-stat .label {
+            font-size: 12px;
+            color: #88bbdd;
+            text-transform: uppercase;
+        }
 
+        /* Category breakdown */
+        .category-breakdown {
+            background: rgba(10, 20, 40, 0.6);
+            backdrop-filter: blur(5px);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid rgba(0, 163, 255, 0.1);
+            margin-bottom: 25px;
+        }
+        .category-breakdown h3 {
+            font-size: 16px;
+            color: #88bbdd;
+            margin-bottom: 15px;
+        }
+        .category-bar {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .category-bar .cat-name {
+            width: 120px;
+            font-size: 13px;
+            color: #cce0ff;
+        }
+        .category-bar .bar-bg {
+            flex: 1;
+            height: 20px;
+            background: #1a2a4a;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .category-bar .bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00a3ff, #0055ff);
+            border-radius: 10px;
+            transition: width 0.6s;
+        }
+        .category-bar .cat-count {
+            width: 40px;
+            text-align: right;
+            font-size: 13px;
+            color: #e0f0ff;
+            margin-left: 10px;
+        }
+
+        /* Charts – 2 column layout */
         .chart-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 25px;
-            margin-bottom: 30px;
+            gap: 20px;
+            margin-bottom: 25px;
         }
         .chart-box {
             background: rgba(10, 20, 40, 0.6);
             backdrop-filter: blur(5px);
             border-radius: 12px;
-            padding: 20px;
+            padding: 15px;
             border: 1px solid rgba(0, 163, 255, 0.1);
         }
         .chart-box h3 {
-            font-size: 16px;
+            font-size: 14px;
             color: #88bbdd;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
+            text-align: center;
         }
 
+        /* Tables */
         .section {
             background: rgba(10, 20, 40, 0.6);
             backdrop-filter: blur(5px);
@@ -1050,23 +1274,23 @@ DASHBOARD_HTML = """
             border: 1px solid rgba(0, 163, 255, 0.1);
         }
         .section h2 {
-            font-size: 18px;
+            font-size: 16px;
             margin-bottom: 15px;
             color: #88bbdd;
         }
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 14px;
+            font-size: 13px;
         }
         th {
             text-align: left;
-            padding: 10px;
+            padding: 8px 10px;
             color: #88bbdd;
             border-bottom: 1px solid rgba(0, 163, 255, 0.2);
         }
         td {
-            padding: 10px;
+            padding: 8px 10px;
             border-bottom: 1px solid rgba(0, 163, 255, 0.05);
         }
         .severity-critical { color: #ff4757; font-weight: bold; }
@@ -1077,6 +1301,7 @@ DASHBOARD_HTML = """
         .fixed-false { color: #f9ca24; }
         .empty { color: #5a7a9a; font-style: italic; }
 
+        /* AI Assistant */
         .ai-bubble {
             position: fixed;
             bottom: 30px;
@@ -1182,9 +1407,11 @@ DASHBOARD_HTML = """
 
         @media (max-width: 768px) {
             .sidebar { display: none; }
-            .main { margin-left: 0; }
+            .main { margin-left: 0; padding: 15px; }
+            .executive-summary { grid-template-columns: 1fr; }
+            .alerts-overview { grid-template-columns: 1fr; }
             .chart-row { grid-template-columns: 1fr; }
-            .stats { grid-template-columns: 1fr 1fr; }
+            .scan-form .field { flex: 1 0 100%; }
             .ai-chat { width: 300px; right: 10px; bottom: 90px; }
         }
     </style>
@@ -1203,11 +1430,14 @@ DASHBOARD_HTML = """
 
         <div class="main">
             <div class="topbar">
-                <h1>📊 Dashboard</h1>
+                <h1>📊 Executive Dashboard</h1>
                 <div class="user">
                     <span class="badge">{{ company }}</span>
                     <span class="plan">{{ plan|upper }}</span>
                     <span class="email">{{ email }}</span>
+                    {% if plan == 'free' %}
+                        <a href="/create-checkout" class="upgrade-btn">⬆ Upgrade to Pro</a>
+                    {% endif %}
                     <button class="refresh-btn" onclick="loadData()">⟳ Refresh</button>
                 </div>
             </div>
@@ -1215,15 +1445,15 @@ DASHBOARD_HTML = """
             <!-- Scan Form -->
             <div class="scan-form">
                 <div class="field">
-                    <label>Target (IP / Domain)</label>
-                    <input type="text" id="scanTarget" placeholder="e.g. 192.168.1.1 or example.com" value="scanme.nmap.org">
+                    <label>Target</label>
+                    <input type="text" id="scanTarget" placeholder="e.g. 192.168.1.1" value="scanme.nmap.org">
                 </div>
                 <div class="field">
                     <label>Port Range</label>
-                    <input type="text" id="scanPorts" placeholder="e.g. 1-1024, 80, 443" value="1-1024">
+                    <input type="text" id="scanPorts" placeholder="1-1024" value="1-1024">
                 </div>
                 <div class="field">
-                    <label>Cloud (premium only)</label>
+                    <label>Cloud (premium)</label>
                     <select id="scanCloud">
                         <option value="none">None</option>
                         <option value="aws">AWS</option>
@@ -1233,24 +1463,47 @@ DASHBOARD_HTML = """
                     </select>
                 </div>
                 <div class="field">
-                    <label>Account ID (optional)</label>
-                    <input type="text" id="scanAccount" placeholder="e.g. 123456789012">
+                    <label>Account ID</label>
+                    <input type="text" id="scanAccount" placeholder="optional">
                 </div>
                 <button class="submit-btn" id="scanBtn" onclick="startScan()">🚀 Start Scan</button>
             </div>
 
-            <!-- Stats -->
-            <div class="stats" id="stats">
-                <div class="stat-card"><div class="number" id="totalScans">-</div><div class="label">📋 Total Scans</div></div>
-                <div class="stat-card critical"><div class="number" id="criticalFindings">-</div><div class="label">🔥 Critical</div></div>
-                <div class="stat-card fixed"><div class="number" id="fixedIssues">-</div><div class="label">✅ Fixed</div></div>
-                <div class="stat-card"><div class="number" id="openPorts">-</div><div class="label">🔌 Open Ports</div></div>
+            <!-- Executive Risk Summary -->
+            <div class="executive-summary" id="executiveSummary">
+                <div class="score-card">
+                    <div class="label">Security Score</div>
+                    <div class="number" id="securityScore">-</div>
+                    <div class="sub">Based on critical/high vulnerabilities</div>
+                </div>
+                <div class="alerts-overview">
+                    <div class="alert-stat">
+                        <div class="number critical" id="criticalCount">-</div>
+                        <div class="label">Critical</div>
+                        <div class="trend" id="criticalTrend">-</div>
+                    </div>
+                    <div class="alert-stat">
+                        <div class="number high" id="highCount">-</div>
+                        <div class="label">High</div>
+                        <div class="trend" id="highTrend">-</div>
+                    </div>
+                    <div class="alert-stat">
+                        <div class="number total" id="totalAlerts">-</div>
+                        <div class="label">Total Alerts</div>
+                    </div>
+                </div>
             </div>
 
-            <!-- Charts -->
+            <!-- Category Breakdown -->
+            <div class="category-breakdown" id="categoryBreakdown">
+                <h3>🔎 Security Score Breakdown</h3>
+                <div id="categoryBars"></div>
+            </div>
+
+            <!-- Charts Row -->
             <div class="chart-row">
                 <div class="chart-box"><h3>📈 Vulnerability Trend</h3><canvas id="trendChart"></canvas></div>
-                <div class="chart-box"><h3>📊 Severity Breakdown</h3><canvas id="severityChart"></canvas></div>
+                <div class="chart-box"><h3>📊 Created vs Resolved</h3><canvas id="resolvedChart"></canvas></div>
             </div>
 
             <!-- Recent Scans -->
@@ -1271,7 +1524,7 @@ DASHBOARD_HTML = """
             <button class="close" onclick="toggleAI()">✕</button>
         </div>
         <div class="messages" id="aiMessages">
-            <div class="msg ai">👋 Hi! I'm your security assistant. Ask me anything.</div>
+            <div class="msg ai">👋 Hi! I'm your security assistant. Ask me anything about your cloud security.</div>
         </div>
         <div class="input-area">
             <input type="text" id="aiInput" placeholder="Ask a question..." onkeypress="if(event.key==='Enter') sendAI()">
@@ -1341,13 +1594,40 @@ DASHBOARD_HTML = """
 
         async function loadData() {
             try {
-                const res = await fetch('/api/data');
+                const res = await fetch('/api/dashboard-data');
                 const data = await res.json();
-                document.getElementById('totalScans').textContent = data.total_scans || 0;
-                document.getElementById('criticalFindings').textContent = data.critical_findings || 0;
-                document.getElementById('fixedIssues').textContent = data.fixed_issues || 0;
-                document.getElementById('openPorts').textContent = data.open_ports || 0;
 
+                // Security Score
+                document.getElementById('securityScore').textContent = data.security_score || '-';
+                document.getElementById('criticalCount').textContent = data.critical_count || 0;
+                document.getElementById('highCount').textContent = data.high_count || 0;
+                document.getElementById('totalAlerts').textContent = data.total_alerts || 0;
+                document.getElementById('criticalTrend').textContent = data.critical_trend || '-';
+                document.getElementById('highTrend').textContent = data.high_trend || '-';
+
+                // Category breakdown
+                const catBars = document.getElementById('categoryBars');
+                if (data.categories && Object.keys(data.categories).length > 0) {
+                    const total = Object.values(data.categories).reduce((a,b) => a+b, 0);
+                    let html = '';
+                    for (const [cat, count] of Object.entries(data.categories)) {
+                        const pct = total > 0 ? Math.round((count/total)*100) : 0;
+                        html += `
+                            <div class="category-bar">
+                                <span class="cat-name">${cat}</span>
+                                <div class="bar-bg">
+                                    <div class="bar-fill" style="width:${pct}%"></div>
+                                </div>
+                                <span class="cat-count">${count}</span>
+                            </div>
+                        `;
+                    }
+                    catBars.innerHTML = html;
+                } else {
+                    catBars.innerHTML = '<p class="empty">No data available.</p>';
+                }
+
+                // Scans table
                 const scansTable = document.getElementById('scansTable');
                 if (data.scans && data.scans.length > 0) {
                     scansTable.innerHTML = data.scans.map(s => `<tr><td>${s[0]}</td><td>${s[1]}</td><td>${s[2] || '-'}</td><td>${s[3]}</td><td>${s[4]}</td></tr>`).join('');
@@ -1355,6 +1635,7 @@ DASHBOARD_HTML = """
                     scansTable.innerHTML = `<tr><td colspan="5" class="empty">No scans yet. Use the form above.</td></tr>`;
                 }
 
+                // Alerts table
                 const alertsTable = document.getElementById('alertsTable');
                 if (data.alerts && data.alerts.length > 0) {
                     alertsTable.innerHTML = data.alerts.map(a => `<tr><td>${a[0]}</td><td>${a[1]}</td><td class="severity-${a[3].toLowerCase()}">${a[3]}</td><td class="fixed-${a[4] ? 'true' : 'false'}">${a[4] ? '✅ Fixed' : '⚠️ Open'}</td></tr>`).join('');
@@ -1363,28 +1644,11 @@ DASHBOARD_HTML = """
                 }
 
                 // Charts
-                const sevCounts = {CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0, INFO:0};
-                if (data.alerts) data.alerts.forEach(a => { if (sevCounts[a[3]] !== undefined) sevCounts[a[3]]++; });
-                const ctx2 = document.getElementById('severityChart').getContext('2d');
-                if (window.sevChart) window.sevChart.destroy();
-                window.sevChart = new Chart(ctx2, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['Critical','High','Medium','Low','Info'],
-                        datasets: [{
-                            data: [sevCounts.CRITICAL, sevCounts.HIGH, sevCounts.MEDIUM, sevCounts.LOW, sevCounts.INFO],
-                            backgroundColor: ['#ff4757','#ff6b81','#f9ca24','#2ed573','#88bbdd'],
-                            borderColor: '#0a0e1a',
-                            borderWidth: 3
-                        }]
-                    },
-                    options: { responsive: true, plugins: { legend: { labels: { color: '#e0f0ff' } } } }
-                });
-
+                // Trend chart (scans over time)
+                const ctx1 = document.getElementById('trendChart').getContext('2d');
                 const labels = data.scans.map(s => s[0].slice(0, 10)).reverse();
                 const counts = data.scans.map(s => s[4]).reverse();
-                if (labels.length === 0) { labels = ['No Data']; counts = [0]; }
-                const ctx1 = document.getElementById('trendChart').getContext('2d');
+                if (labels.length === 0) { labels.push('No Data'); counts.push(0); }
                 if (window.trendChart) window.trendChart.destroy();
                 window.trendChart = new Chart(ctx1, {
                     type: 'line',
@@ -1405,6 +1669,27 @@ DASHBOARD_HTML = """
                         scales: { x: { ticks: { color: '#88bbdd' } }, y: { ticks: { color: '#88bbdd' } } }
                     }
                 });
+
+                // Created vs Resolved (pie chart)
+                const ctx2 = document.getElementById('resolvedChart').getContext('2d');
+                if (window.resolvedChart) window.resolvedChart.destroy();
+                window.resolvedChart = new Chart(ctx2, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Resolved', 'Open'],
+                        datasets: [{
+                            data: [data.resolved_count || 0, data.open_count || 0],
+                            backgroundColor: ['#2ed573', '#ff4757'],
+                            borderColor: '#0a0e1a',
+                            borderWidth: 3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { labels: { color: '#e0f0ff' } } }
+                    }
+                });
+
             } catch(e) {
                 console.error('Error loading data:', e);
             }
@@ -1417,7 +1702,7 @@ DASHBOARD_HTML = """
 </html>
 """
 
-# ===== PRICING =====
+# ===== PRICING (unchanged) =====
 PRICING_HTML = """
 <!DOCTYPE html>
 <html>
@@ -1628,6 +1913,7 @@ def dashboard():
         return redirect('/login')
     user_id = session['user_id']
     plan = get_user_plan(user_id)
+    generate_demo_scans(user_id)
     return render_template_string(
         DASHBOARD_HTML,
         SHARED_CSS=SHARED_CSS,
@@ -1636,25 +1922,86 @@ def dashboard():
         plan=plan
     )
 
-@app.route('/api/data')
-def api_data():
+@app.route('/api/dashboard-data')
+def api_dashboard_data():
     if not session.get('user_id'):
         return jsonify({'error': 'Unauthorized'}), 401
     user_id = session['user_id']
     scans = get_scan_history(user_id)
-    alerts = get_alerts(user_id)
-    total_scans = len(scans)
-    critical_findings = sum(1 for a in alerts if a[3] == 'CRITICAL')
-    fixed_issues = sum(1 for a in alerts if a[4] == 1)
-    open_ports = scans[0][3] if scans else 0
+    alerts = get_alerts(user_id, 20)
+
+    # Compute security score (0-100)
+    critical, high = count_critical_high(user_id)
+    total_alerts = len(alerts)
+    security_score = 100
+    if total_alerts > 0:
+        penalty = (critical * 2 + high) / total_alerts * 20
+        security_score = max(0, min(100, int(100 - penalty)))
+
+    # Trends (just simple arrow for now)
+    critical_trend = f"↓{critical}" if critical > 0 else "✓"
+    high_trend = f"↓{high}" if high > 0 else "✓"
+
+    # Category breakdown
+    categories = get_category_breakdown(user_id)
+
+    # Resolved vs open
+    created, resolved = get_resolved_vs_created(user_id)
+    open_count = created - resolved
+
     return jsonify({
-        'total_scans': total_scans,
-        'critical_findings': critical_findings,
-        'fixed_issues': fixed_issues,
-        'open_ports': open_ports,
+        'security_score': security_score,
+        'critical_count': critical,
+        'high_count': high,
+        'total_alerts': total_alerts,
+        'critical_trend': critical_trend,
+        'high_trend': high_trend,
+        'categories': categories,
         'scans': scans,
-        'alerts': alerts
+        'alerts': alerts,
+        'resolved_count': resolved,
+        'open_count': open_count
     })
+
+@app.route('/create-checkout')
+def create_checkout():
+    if not session.get('user_id'):
+        return redirect('/login')
+    user_id = session['user_id']
+    email = session['email']
+    if is_premium(user_id):
+        flash('You are already a premium member.', 'info')
+        return redirect('/dashboard')
+    if not STRIPE_AVAILABLE:
+        flash('Stripe is not configured. Please contact support.', 'danger')
+        return redirect('/dashboard')
+    checkout_url = create_checkout_session(user_id, email)
+    if checkout_url:
+        return redirect(checkout_url)
+    else:
+        flash('Failed to create checkout session. Please try again.', 'danger')
+        return redirect('/dashboard')
+
+@app.route('/stripe-webhook', methods=['POST'])
+def stripe_webhook():
+    if not STRIPE_AVAILABLE:
+        return jsonify({'error': 'Stripe not configured'}), 400
+    payload = request.get_data(as_text=True)
+    sig_header = request.headers.get('Stripe-Signature')
+    webhook_secret = os.environ.get('STRIPE_WEBHOOK_SECRET', '')
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+    except ValueError:
+        return jsonify({'error': 'Invalid payload'}), 400
+    except stripe.error.SignatureVerificationError:
+        return jsonify({'error': 'Invalid signature'}), 400
+
+    if event['type'] == 'checkout.session.completed':
+        session_obj = event['data']['object']
+        user_id = session_obj.get('metadata', {}).get('user_id')
+        if user_id:
+            set_user_plan(int(user_id), 'premium')
+    return jsonify({'status': 'success'}), 200
 
 @app.route('/api/scan', methods=['POST'])
 def api_scan():
@@ -1739,7 +2086,7 @@ def ask_ai():
     if not question:
         return jsonify({'response': 'Ask a question.'})
     # Placeholder – you can replace with Ollama or OpenAI
-    response = f"I received your question: '{question}'. This is a demo response."
+    response = f"I received your question: '{question}'. This is a demo response. I'll connect to a real AI soon."
     return jsonify({'response': response})
 
 # ---------- Main ----------
