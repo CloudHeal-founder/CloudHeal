@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Aegis (APCSS) – Automated Protection of Cloud Security Systems
-With Human-in-the-Loop + AI Support + Enhanced Web Scanning
+With Human-in-the-Loop + AI Support + Enhanced Web Scanning + User Authentication
 Built by Austin Emmanuel – 19‑year‑old founder from Nigeria
 """
 import socket
@@ -21,6 +21,10 @@ import urllib3
 from typing import Dict, List, Tuple, Optional
 from urllib.request import urlopen, Request
 from urllib.error import URLError
+
+# ----- FLASK AUTHENTICATION IMPORTS -----
+from flask import Flask, render_template_string, jsonify, request, redirect, url_for, session
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -108,6 +112,13 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp TEXT, cloud TEXT, account TEXT,
         message TEXT, severity TEXT, fixed INTEGER
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE,
+        password TEXT,
+        company TEXT,
+        created_at TEXT
     )''')
     conn.commit()
     conn.close()
@@ -467,7 +478,6 @@ def discover_directories(target_url, wordlist=None):
     Brute‑force common directories on a web target.
     """
     if not wordlist:
-        # Extended wordlist (500+ common directories)
         wordlist = [
             "admin", "admin.php", "administrator", "login", "login.php", "wp-admin",
             "backup", "backups", "temp", "tmp", "test", "dev", "staging",
@@ -544,11 +554,8 @@ def test_sqli(target_url, params=None, payloads=None):
             "1' OR '1'='2"
         ]
     findings = []
-    # If target_url already has query parameters, we need to parse them
     if '?' in target_url:
         base, query_string = target_url.split('?', 1)
-        # If user provided parameters, we use them; otherwise we use the existing ones
-        # Actually we want to test each parameter individually
         existing_params = []
         for pair in query_string.split('&'):
             if '=' in pair:
@@ -1276,7 +1283,82 @@ def run_fix_chain(args):
             print(f"[!] Unknown cloud: {cloud}")
     print("[*] Multi-cloud scanning complete.")
 
-# ---------- DASHBOARD ----------
+# ---------- AUTHENTICATION HTML TEMPLATES ----------
+LOGIN_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Aegis – Login</title>
+    <style>
+        body { background: #0a0e17; color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-box { background: #111b26; padding: 40px; border-radius: 12px; border: 1px solid #1e2a3a; width: 350px; }
+        .login-box h1 { text-align: center; color: #00d4ff; margin-bottom: 30px; }
+        .login-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
+        .login-box button { width: 100%; padding: 12px; background: #00d4ff; color: #0a0e17; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
+        .login-box button:hover { background: #7b2ffc; color: #fff; }
+        .login-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
+        .login-box .link { text-align: center; margin-top: 15px; color: #8ba0b8; font-size: 14px; }
+        .login-box .link a { color: #00d4ff; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h1>🛡️ Aegis</h1>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST" action="/login">
+            <input type="email" name="email" placeholder="Email" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">Login</button>
+        </form>
+        <div class="link">
+            Don't have an account? <a href="/signup">Sign up</a>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+SIGNUP_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Aegis – Sign Up</title>
+    <style>
+        body { background: #0a0e17; color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .signup-box { background: #111b26; padding: 40px; border-radius: 12px; border: 1px solid #1e2a3a; width: 350px; }
+        .signup-box h1 { text-align: center; color: #00d4ff; margin-bottom: 30px; }
+        .signup-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
+        .signup-box button { width: 100%; padding: 12px; background: #00d4ff; color: #0a0e17; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
+        .signup-box button:hover { background: #7b2ffc; color: #fff; }
+        .signup-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
+        .signup-box .link { text-align: center; margin-top: 15px; color: #8ba0b8; font-size: 14px; }
+        .signup-box .link a { color: #00d4ff; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="signup-box">
+        <h1>🛡️ Aegis</h1>
+        <h3 style="text-align:center; color:#8ba0b8; margin-top:-10px;">Create Account</h3>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST" action="/signup">
+            <input type="text" name="company" placeholder="Company Name" required>
+            <input type="email" name="email" placeholder="Email" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">Sign Up</button>
+        </form>
+        <div class="link">
+            Already have an account? <a href="/login">Login</a>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+# ---------- WEB DASHBOARD ----------
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html>
@@ -1404,10 +1486,55 @@ DASHBOARD_HTML = """
 
 if FLASK_AVAILABLE:
     app = Flask(__name__)
+    app.secret_key = os.urandom(24)
 
     @app.route('/')
     def dashboard():
+        if not session.get('user_id'):
+            return redirect('/login')
         return render_template_string(DASHBOARD_HTML)
+
+    @app.route('/login', methods=['GET', 'POST'])
+    def login():
+        if request.method == 'POST':
+            email = request.form['email']
+            password = request.form['password']
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+            c.execute("SELECT * FROM users WHERE email = ?", (email,))
+            user = c.fetchone()
+            conn.close()
+            if user and check_password_hash(user[2], password):
+                session['user_id'] = user[0]
+                session['email'] = user[1]
+                session['company'] = user[3]
+                return redirect('/')
+            else:
+                return render_template_string(LOGIN_HTML, error="Invalid email or password")
+        return render_template_string(LOGIN_HTML, error=None)
+
+    @app.route('/signup', methods=['GET', 'POST'])
+    def signup():
+        if request.method == 'POST':
+            email = request.form['email']
+            company = request.form['company']
+            password = generate_password_hash(request.form['password'])
+            try:
+                conn = sqlite3.connect(DB_NAME)
+                c = conn.cursor()
+                c.execute("INSERT INTO users (email, password, company, created_at) VALUES (?, ?, ?, datetime('now'))", 
+                          (email, password, company))
+                conn.commit()
+                conn.close()
+                return redirect('/login')
+            except sqlite3.IntegrityError:
+                return render_template_string(SIGNUP_HTML, error="Email already exists")
+        return render_template_string(SIGNUP_HTML, error=None)
+
+    @app.route('/logout')
+    def logout():
+        session.clear()
+        return redirect('/login')
 
     @app.route('/api/data')
     def api_data():
@@ -1447,9 +1574,9 @@ if FLASK_AVAILABLE:
         })
 
     def start_dashboard(port=5000):
-        threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False), daemon=True).start()
-        webbrowser.open(f'http://localhost:{port}')
-        print(f"\n🌐 Aegis Dashboard running at: http://localhost:{port}")
+        # Use Render's PORT environment variable if available
+        port = int(os.environ.get('PORT', port))
+        app.run(host='0.0.0.0', port=port, debug=False)
 
 # ---------- MAIN ----------
 def main():
@@ -1501,7 +1628,7 @@ def main():
         print("="*80)
         return
 
-    # --- Dashboard ---
+    # --- Dashboard (without login) – overridden by Flask app above ---
     if args.dashboard:
         if not FLASK_AVAILABLE:
             print("[!] Flask not installed. Run: pip install flask")
@@ -1557,7 +1684,6 @@ def main():
     print(f"[*] Scanning {args.host} on {len(ports)} ports...")
     open_services = scan_host(args.host, ports, args.threads)
 
-    # If no open ports found, still allow web scanning to proceed.
     if not open_services:
         print("[!] No open ports found. Proceeding with web scanning only...")
 
@@ -1582,7 +1708,7 @@ def main():
                 protocol = "https" if port in (443, 8443) else "http"
                 all_findings.extend(check_api_vulnerabilities(args.host, port, protocol))
 
-    # --- WEB SCANNER (DIR, SQLI, XSS) – Always run if flags are set, regardless of open ports ---
+    # --- WEB SCANNER (DIR, SQLI, XSS) ---
     target_url = args.host
     if not (target_url.startswith('http://') or target_url.startswith('https://')):
         target_url = f"https://{target_url}"
@@ -1641,10 +1767,8 @@ def main():
                         cve_data['id']
                     ))
 
-    # --- RISK SCORE ---
     risk_score = calculate_risk_score(all_findings)
 
-    # --- AUTO-REMEDIATION ---
     fixed_count = 0
     if args.fix:
         print("\n" + "="*80)
