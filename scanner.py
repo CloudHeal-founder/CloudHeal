@@ -77,6 +77,7 @@ DB_NAME = "apcss_global.db"
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
+    # Create tables if they don't exist (with new schema)
     c.execute('''CREATE TABLE IF NOT EXISTS scans (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
@@ -111,6 +112,27 @@ def init_db():
         plan TEXT DEFAULT 'free',
         stripe_customer_id TEXT
     )''')
+    # ----- MIGRATION: Add missing columns for existing databases -----
+    try:
+        c.execute("ALTER TABLE scans ADD COLUMN user_id INTEGER")
+    except sqlite3.OperationalError:
+        pass  # column already exists
+    try:
+        c.execute("ALTER TABLE alerts ADD COLUMN user_id INTEGER")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE alerts ADD COLUMN fixed INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN stripe_customer_id TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN plan TEXT DEFAULT 'free'")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
@@ -191,7 +213,6 @@ def get_resolved_vs_created(user_id):
     return created, resolved
 
 def get_category_breakdown(user_id):
-    # Map alert messages to categories
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     c.execute('SELECT message, severity FROM alerts WHERE user_id = ?', (user_id,))
@@ -1840,7 +1861,7 @@ def login():
             session['user_id'] = user[0]
             session['email'] = user[1]
             session['company'] = user[3]
-            session['plan'] = user[7]
+            session['plan'] = user[8]  # index 8 is plan (after verified)
             return redirect('/dashboard')
         else:
             return render_template_string(LOGIN_HTML, SHARED_CSS=SHARED_CSS, error="Invalid email or unverified account")
@@ -1930,7 +1951,6 @@ def api_dashboard_data():
     scans = get_scan_history(user_id)
     alerts = get_alerts(user_id, 20)
 
-    # Compute security score (0-100)
     critical, high = count_critical_high(user_id)
     total_alerts = len(alerts)
     security_score = 100
@@ -1938,14 +1958,10 @@ def api_dashboard_data():
         penalty = (critical * 2 + high) / total_alerts * 20
         security_score = max(0, min(100, int(100 - penalty)))
 
-    # Trends (just simple arrow for now)
     critical_trend = f"↓{critical}" if critical > 0 else "✓"
     high_trend = f"↓{high}" if high > 0 else "✓"
 
-    # Category breakdown
     categories = get_category_breakdown(user_id)
-
-    # Resolved vs open
     created, resolved = get_resolved_vs_created(user_id)
     open_count = created - resolved
 
