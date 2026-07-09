@@ -1358,7 +1358,7 @@ SIGNUP_HTML = """
 </html>
 """
 
-# ---------- WEB DASHBOARD ----------
+# ---------- WEB DASHBOARD (NEW) ----------
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html>
@@ -1366,19 +1366,46 @@ DASHBOARD_HTML = """
     <title>Aegis Security Dashboard</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-        body { background: #0a0e17; color: #e0e6ed; padding: 20px; }
-        .container { max-width: 1400px; margin: 0 auto; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 1px solid #1e2a3a; padding-bottom: 20px; }
-        .header h1 { font-size: 28px; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .header .badge { background: #1e2a3a; padding: 8px 16px; border-radius: 20px; font-size: 12px; color: #8ba0b8; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: #111b26; border-radius: 12px; padding: 20px; border: 1px solid #1e2a3a; }
-        .stat-card .number { font-size: 32px; font-weight: bold; color: #00d4ff; }
-        .stat-card .label { font-size: 14px; color: #8ba0b8; margin-top: 5px; }
+        body { background: #0a0e17; color: #e0e6ed; display: flex; height: 100vh; overflow: hidden; }
+        
+        /* ─── Sidebar ─── */
+        .sidebar { width: 220px; background: #0d1520; border-right: 1px solid #1e2a3a; padding: 20px 0; height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; }
+        .sidebar .logo { font-size: 22px; font-weight: 700; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; padding: 0 20px; margin-bottom: 30px; }
+        .sidebar .logo span { font-size: 12px; display: block; -webkit-text-fill-color: #5a6a7a; }
+        .sidebar a { display: block; padding: 12px 20px; color: #8ba0b8; text-decoration: none; font-size: 14px; border-left: 3px solid transparent; transition: all 0.2s; }
+        .sidebar a:hover, .sidebar a.active { background: #111b26; color: #e0e6ed; border-left-color: #00d4ff; }
+        .sidebar a .icon { margin-right: 10px; }
+        .sidebar .logout { margin-top: 40px; border-top: 1px solid #1e2a3a; padding-top: 20px; color: #ff4757; }
+        .sidebar .logout:hover { border-left-color: #ff4757; }
+        
+        /* ─── Main Content ─── */
+        .main { margin-left: 220px; flex: 1; padding: 20px 30px; overflow-y: auto; height: 100vh; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid #1e2a3a; margin-bottom: 25px; }
+        .topbar h1 { font-size: 24px; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .topbar .user { display: flex; align-items: center; gap: 15px; }
+        .topbar .user .email { color: #8ba0b8; font-size: 14px; }
+        .topbar .user .badge { background: #1e2a3a; padding: 6px 14px; border-radius: 20px; font-size: 12px; color: #8ba0b8; }
+        
+        /* ─── Stats ─── */
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: #111b26; border-radius: 12px; padding: 20px; border: 1px solid #1e2a3a; transition: transform 0.2s; }
+        .stat-card:hover { transform: translateY(-3px); border-color: #00d4ff; }
+        .stat-card .number { font-size: 30px; font-weight: 700; color: #00d4ff; }
+        .stat-card .label { font-size: 14px; color: #8ba0b8; margin-top: 4px; display: flex; align-items: center; gap: 8px; }
         .stat-card.critical .number { color: #ff4757; }
         .stat-card.fixed .number { color: #2ed573; }
+        .stat-card .icon { font-size: 20px; }
+        
+        /* ─── Charts ─── */
+        .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 30px; }
+        .chart-box { background: #111b26; border-radius: 12px; padding: 20px; border: 1px solid #1e2a3a; }
+        .chart-box h3 { font-size: 16px; color: #8ba0b8; margin-bottom: 15px; }
+        .chart-box canvas { max-height: 200px; width: 100% !important; }
+        
+        /* ─── Tables ─── */
         .section { background: #111b26; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #1e2a3a; }
         .section h2 { font-size: 18px; margin-bottom: 15px; color: #8ba0b8; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -1390,38 +1417,62 @@ DASHBOARD_HTML = """
         .severity-info { color: #8ba0b8; }
         .fixed-true { color: #2ed573; }
         .fixed-false { color: #ffa502; }
-        .path-chain { font-family: monospace; font-size: 13px; background: #0a0e17; padding: 8px 12px; border-radius: 6px; display: inline-block; }
+        .path-chain { font-family: monospace; font-size: 13px; background: #0a0e17; padding: 6px 12px; border-radius: 6px; display: inline-block; }
+        .empty { color: #5a6a7a; font-style: italic; }
         .refresh-btn { background: #1e2a3a; border: none; color: #e0e6ed; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; }
         .refresh-btn:hover { background: #2a3a4a; }
-        .empty { color: #8ba0b8; font-style: italic; }
-        @media (max-width: 600px) { .stats { grid-template-columns: 1fr 1fr; } }
+        
+        @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; } .chart-row { grid-template-columns: 1fr; } .stats { grid-template-columns: 1fr 1fr; } }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🛡️ Aegis Security Dashboard</h1>
-            <div>
-                <span class="badge">Auto-Remediation Active</span>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="logo">🛡️ Aegis<span>Cloud Security</span></div>
+        <a href="#" class="active"><span class="icon">📊</span> Dashboard</a>
+        <a href="#"><span class="icon">🔍</span> Scans</a>
+        <a href="#"><span class="icon">🔔</span> Alerts</a>
+        <a href="#"><span class="icon">⚙️</span> Settings</a>
+        <a href="/logout" class="logout"><span class="icon">🚪</span> Logout</a>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main">
+        <!-- Top Bar -->
+        <div class="topbar">
+            <h1>📊 Dashboard</h1>
+            <div class="user">
+                <span class="badge">{{ company }}</span>
+                <span class="email">{{ email }}</span>
                 <button class="refresh-btn" onclick="location.reload()">⟳ Refresh</button>
             </div>
         </div>
 
+        <!-- Stats -->
         <div class="stats" id="stats">
-            <div class="stat-card"><div class="number" id="totalScans">-</div><div class="label">Total Scans</div></div>
-            <div class="stat-card critical"><div class="number" id="criticalFindings">-</div><div class="label">Critical Findings</div></div>
-            <div class="stat-card fixed"><div class="number" id="fixedIssues">-</div><div class="label">Auto-Fixed</div></div>
-            <div class="stat-card"><div class="number" id="openPorts">-</div><div class="label">Open Ports</div></div>
+            <div class="stat-card"><div class="number" id="totalScans">-</div><div class="label">📋 Total Scans</div></div>
+            <div class="stat-card critical"><div class="number" id="criticalFindings">-</div><div class="label">🔥 Critical Findings</div></div>
+            <div class="stat-card fixed"><div class="number" id="fixedIssues">-</div><div class="label">✅ Auto-Fixed</div></div>
+            <div class="stat-card"><div class="number" id="openPorts">-</div><div class="label">🔌 Open Ports</div></div>
         </div>
 
+        <!-- Charts -->
+        <div class="chart-row">
+            <div class="chart-box"><h3>📈 Vulnerability Trend</h3><canvas id="trendChart"></canvas></div>
+            <div class="chart-box"><h3>📊 Severity Breakdown</h3><canvas id="severityChart"></canvas></div>
+        </div>
+
+        <!-- Recent Scans -->
         <div class="section">
-            <h2>📊 Recent Scans</h2>
+            <h2>📋 Recent Scans</h2>
             <table>
                 <thead><tr><th>Timestamp</th><th>Target</th><th>Open Ports</th><th>Findings</th></tr></thead>
                 <tbody id="scansTable"></tbody>
             </table>
         </div>
 
+        <!-- Alerts -->
         <div class="section">
             <h2>🔔 Alerts & Remediations</h2>
             <table>
@@ -1430,6 +1481,7 @@ DASHBOARD_HTML = """
             </table>
         </div>
 
+        <!-- Attack Paths -->
         <div class="section">
             <h2>🔥 Attack Paths</h2>
             <div id="attackPaths"></div>
@@ -1447,11 +1499,13 @@ DASHBOARD_HTML = """
                 document.getElementById('fixedIssues').textContent = data.fixed_issues || 0;
                 document.getElementById('openPorts').textContent = data.open_ports || 0;
 
+                // Scans table
                 const scansTable = document.getElementById('scansTable');
                 scansTable.innerHTML = data.scans.map(s => `
                     <tr><td>${s[0]}</td><td>${s[1]}</td><td>${s[2]}</td><td>${s[3]}</td></tr>
                 `).join('') || '<tr><td colspan="4" class="empty">No scans yet</td></tr>';
 
+                // Alerts table
                 const alertsTable = document.getElementById('alertsTable');
                 alertsTable.innerHTML = data.alerts.map(a => `
                     <tr>
@@ -1462,17 +1516,64 @@ DASHBOARD_HTML = """
                     </tr>
                 `).join('') || '<tr><td colspan="4" class="empty">No alerts yet</td></tr>';
 
+                // Attack paths
                 const pathsDiv = document.getElementById('attackPaths');
                 if (data.attack_paths && data.attack_paths.length > 0) {
                     pathsDiv.innerHTML = data.attack_paths.map((path, i) => `
-                        <div style="margin-bottom: 10px; padding: 12px; background: #0a0e17; border-radius: 8px; border-left: 3px solid #ff4757;">
+                        <div style="margin-bottom: 8px; padding: 10px 14px; background: #0a0e17; border-radius: 8px; border-left: 3px solid #ff4757;">
                             <strong>Path ${i+1}:</strong>
                             <span class="path-chain">${path.join(' → ')}</span>
                         </div>
                     `).join('');
                 } else {
-                    pathsDiv.innerHTML = '<span class="empty">✅ No attack paths found. Your cloud is secure.</span>';
+                    pathsDiv.innerHTML = '<span class="empty">✅ No attack paths found.</span>';
                 }
+
+                // —— Charts ——
+                const ctx1 = document.getElementById('trendChart').getContext('2d');
+                const ctx2 = document.getElementById('severityChart').getContext('2d');
+
+                // Severity breakdown
+                const sevCounts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, INFO: 0 };
+                data.alerts.forEach(a => { if (sevCounts[a[2]] !== undefined) sevCounts[a[2]]++; });
+
+                new Chart(ctx2, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Critical', 'High', 'Medium', 'Low', 'Info'],
+                        datasets: [{
+                            data: [sevCounts.CRITICAL, sevCounts.HIGH, sevCounts.MEDIUM, sevCounts.LOW, sevCounts.INFO],
+                            backgroundColor: ['#ff4757', '#ffa502', '#eccc68', '#2ed573', '#8ba0b8'],
+                            borderColor: '#0a0e17',
+                            borderWidth: 3
+                        }]
+                    },
+                    options: { responsive: true, plugins: { legend: { labels: { color: '#e0e6ed' } } } }
+                });
+
+                // Trend chart (using scan data)
+                const labels = data.scans.map(s => s[0].slice(0, 10)).reverse();
+                const counts = data.scans.map(s => s[3]).reverse();
+                new Chart(ctx1, {
+                    type: 'line',
+                    data: {
+                        labels: labels.length ? labels : ['No Data'],
+                        datasets: [{
+                            label: 'Findings',
+                            data: counts.length ? counts : [0],
+                            borderColor: '#00d4ff',
+                            backgroundColor: 'rgba(0,212,255,0.1)',
+                            fill: true,
+                            tension: 0.3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { labels: { color: '#e0e6ed' } } },
+                        scales: { x: { ticks: { color: '#8ba0b8' } }, y: { ticks: { color: '#8ba0b8' } } }
+                    }
+                });
+
             } catch (e) {
                 console.error('Error loading data:', e);
             }
@@ -1492,7 +1593,11 @@ if FLASK_AVAILABLE:
     def dashboard():
         if not session.get('user_id'):
             return redirect('/login')
-        return render_template_string(DASHBOARD_HTML)
+        return render_template_string(
+            DASHBOARD_HTML,
+            email=session.get('email', 'user@example.com'),
+            company=session.get('company', 'My Company')
+        )
 
     @app.route('/login', methods=['GET', 'POST'])
     def login():
@@ -1574,7 +1679,6 @@ if FLASK_AVAILABLE:
         })
 
     def start_dashboard(port=5000):
-        # Use Render's PORT environment variable if available
         port = int(os.environ.get('PORT', port))
         app.run(host='0.0.0.0', port=port, debug=False)
 
