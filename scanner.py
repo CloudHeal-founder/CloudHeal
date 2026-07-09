@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Aegis – Complete SaaS with OTP, Free/Premium, Working Web Scans & Charts
+Aegis – Full SaaS with Free & Premium tiers
 Built by Austin Emmanuel – 19‑year‑old founder from Nigeria
 """
 import socket
@@ -21,31 +21,19 @@ import subprocess
 import time
 import random
 import string
+import hashlib
 from typing import Dict, List, Tuple, Optional
 from urllib.request import urlopen, Request
 from urllib.error import URLError
 
 # ----- FLASK AUTHENTICATION IMPORTS -----
-from flask import Flask, render_template_string, jsonify, request, redirect, url_for, session
+from flask import Flask, render_template_string, jsonify, request, redirect, url_for, session, flash
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# ----- AI SUPPORT (optional) -----
-try:
-    import openai
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
-
-try:
-    import ollama
-    OLLAMA_AVAILABLE = True
-except ImportError:
-    OLLAMA_AVAILABLE = False
-
-# ----- Optional Cloud SDKs -----
+# ----- Optional Cloud SDKs (free tier doesn't need them) -----
 try:
     import boto3
     from botocore.exceptions import ClientError
@@ -72,14 +60,6 @@ try:
 except ImportError:
     OCI_AVAILABLE = False
 
-# ----- Web Dashboard -----
-try:
-    from flask import Flask, render_template_string, jsonify
-    FLASK_AVAILABLE = True
-except ImportError:
-    FLASK_AVAILABLE = False
-    print("[!] Flask not installed. Install with: pip install flask")
-
 # ----- Table Formatting -----
 try:
     from tabulate import tabulate
@@ -87,28 +67,45 @@ except ImportError:
     print("Install tabulate: pip install tabulate")
     sys.exit(1)
 
+# ----- AI (optional) -----
+try:
+    import ollama
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+
 # ---------- Database Setup ----------
 DB_NAME = "apcss_global.db"
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
+    # Scans table
     c.execute('''CREATE TABLE IF NOT EXISTS scans (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT, target TEXT, cloud TEXT, account TEXT,
-        open_ports TEXT, findings TEXT,
-        total_open_ports INTEGER, total_findings INTEGER
+        user_id INTEGER,
+        timestamp TEXT,
+        target TEXT,
+        cloud TEXT,
+        account TEXT,
+        open_ports TEXT,
+        findings TEXT,
+        total_open_ports INTEGER,
+        total_findings INTEGER,
+        status TEXT DEFAULT 'completed'
     )''')
-    c.execute('''CREATE TABLE IF NOT EXISTS resources (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, scan_id INTEGER,
-        resource_type TEXT, resource_id TEXT, status TEXT,
-        FOREIGN KEY(scan_id) REFERENCES scans(id)
-    )''')
+    # Alerts table
     c.execute('''CREATE TABLE IF NOT EXISTS alerts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT, cloud TEXT, account TEXT,
-        message TEXT, severity TEXT, fixed INTEGER
+        user_id INTEGER,
+        timestamp TEXT,
+        cloud TEXT,
+        account TEXT,
+        message TEXT,
+        severity TEXT,
+        fixed INTEGER DEFAULT 0
     )''')
+    # Users table (with plan)
     c.execute('''CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT UNIQUE,
@@ -118,308 +115,69 @@ def init_db():
         last_name TEXT,
         created_at TEXT,
         verified INTEGER DEFAULT 0,
-        is_premium INTEGER DEFAULT 0
+        plan TEXT DEFAULT 'free'   -- 'free' or 'premium'
     )''')
     conn.commit()
     conn.close()
 
-# ---- OTP Storage (in-memory) ----
-pending_users = {}
+def get_user_plan(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT plan FROM users WHERE id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else 'free'
 
-def generate_otp():
-    return ''.join(random.choices(string.digits, k=6))
+def is_premium(user_id):
+    return get_user_plan(user_id) == 'premium'
 
-def send_otp_email(email, otp):
-    # In production use SMTP; for now print to console
-    print(f"[OTP] Your verification code for Aegis is: {otp}")
-    print(f"[OTP] Sent to: {email}")
-    return True
-
-def ensure_db_tables():
-    try:
-        init_db()
-        print("[+] Database tables verified/created.")
-    except Exception as e:
-        print(f"[!] Error creating database tables: {e}")
-
-def save_scan(target, cloud, account, open_services, findings):
+def save_scan(user_id, target, cloud, account, open_services, findings):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     ts = datetime.datetime.now().isoformat()
-    c.execute('''INSERT INTO scans (timestamp, target, cloud, account, open_ports, findings, total_open_ports, total_findings)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-              (ts, target, cloud, account,
+    c.execute('''INSERT INTO scans (user_id, timestamp, target, cloud, account, open_ports, findings, total_open_ports, total_findings)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+              (user_id, ts, target, cloud, account,
                json.dumps(list(open_services.keys())),
                json.dumps(findings),
                len(open_services), len(findings)))
-    scan_id = c.lastrowid
-    for port, (service, banner) in open_services.items():
-        c.execute('INSERT INTO resources (scan_id, resource_type, resource_id, status) VALUES (?, ?, ?, ?)',
-                  (scan_id, "port", str(port), f"{service}:{banner[:30] if banner else ''}"))
     conn.commit()
     conn.close()
 
-def save_alert(cloud, account, message, severity, fixed=False):
+def save_alert(user_id, cloud, account, message, severity, fixed=False):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     ts = datetime.datetime.now().isoformat()
-    c.execute('INSERT INTO alerts (timestamp, cloud, account, message, severity, fixed) VALUES (?, ?, ?, ?, ?, ?)',
-              (ts, cloud, account, message, severity, 1 if fixed else 0))
+    c.execute('INSERT INTO alerts (user_id, timestamp, cloud, account, message, severity, fixed) VALUES (?, ?, ?, ?, ?, ?, ?)',
+              (user_id, ts, cloud, account, message, severity, 1 if fixed else 0))
     conn.commit()
     conn.close()
 
-def get_scan_history():
+def get_scan_history(user_id, limit=10):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute('SELECT timestamp, cloud, account, total_open_ports, total_findings FROM scans ORDER BY id DESC LIMIT 10')
+    c.execute('SELECT timestamp, target, cloud, total_open_ports, total_findings FROM scans WHERE user_id = ? ORDER BY id DESC LIMIT ?', (user_id, limit))
     rows = c.fetchall()
     conn.close()
     return rows
 
-def get_alerts(limit=20):
+def get_alerts(user_id, limit=20):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute('SELECT timestamp, cloud, account, message, severity, fixed FROM alerts ORDER BY id DESC LIMIT ?', (limit,))
+    c.execute('SELECT timestamp, cloud, account, message, severity, fixed FROM alerts WHERE user_id = ? ORDER BY id DESC LIMIT ?', (user_id, limit))
     rows = c.fetchall()
     conn.close()
     return rows
 
-# ---------- Slack Alert ----------
-def send_slack_alert(message, severity="INFO", webhook_url=None, cloud="unknown", account="unknown"):
-    if not webhook_url:
-        return
-    try:
-        import requests
-        color = "good" if severity == "INFO" else "warning" if severity == "MEDIUM" else "danger"
-        payload = {
-            "attachments": [{
-                "color": color,
-                "title": f"Aegis Alert [{cloud}/{account}]: {severity}",
-                "text": message,
-                "footer": "Aegis Security Platform",
-                "ts": int(datetime.datetime.now().timestamp())
-            }]
-        }
-        requests.post(webhook_url, json=payload, timeout=5)
-    except Exception:
-        pass
-
-# ---------- AI QUERY FUNCTION (with fallback) ----------
-def ai_query(question, context=""):
-    # If we have Ollama or OpenAI, use them
-    if OLLAMA_AVAILABLE:
-        try:
-            response = ollama.chat(
-                model="llama3",
-                messages=[
-                    {"role": "system", "content": "You are a cloud security expert."},
-                    {"role": "user", "content": question}
-                ]
-            )
-            return response['message']['content']
-        except Exception as e:
-            return f"AI Error: {str(e)}"
-    elif OPENAI_AVAILABLE and OPENAI_API_KEY != "your-api-key-here":
-        try:
-            openai.api_key = OPENAI_API_KEY
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a cloud security expert."},
-                    {"role": "user", "content": question}
-                ]
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            return f"AI Error: {str(e)}"
-    else:
-        # Fallback: simple rule-based responses
-        question_lower = question.lower()
-        if "open port" in question_lower:
-            return "Open ports are potential entry points for attackers. You should close unnecessary ports and restrict access using firewalls."
-        elif "s3" in question_lower and "public" in question_lower:
-            return "Public S3 buckets can expose sensitive data. Always block public access and use bucket policies to restrict access."
-        elif "security group" in question_lower:
-            return "Security groups act as virtual firewalls. Avoid allowing 0.0.0.0/0 on sensitive ports like 22, 3389, or 3306."
-        elif "attack path" in question_lower:
-            return "An attack path is a chain of vulnerabilities that an attacker can use to move from the internet to your sensitive resources."
-        elif "fix" in question_lower or "remediate" in question_lower:
-            return "To fix vulnerabilities, apply the principle of least privilege, use encryption, and regularly audit your configurations."
-        else:
-            return "I'm your cloud security assistant. I can answer questions about open ports, S3, security groups, attack paths, and remediation. Try asking something specific."
-
-# ---------- COMPLIANCE REPORTS (PDF) ----------
-try:
-    from fpdf import FPDF
-    FPDF_AVAILABLE = True
-except ImportError:
-    FPDF_AVAILABLE = False
-    print("[!] fpdf2 not installed. Install: pip install fpdf2")
-
-def generate_compliance_report(target="127.0.0.1", output_file="apcss_report.pdf", cloud=None, account=None):
-    if not FPDF_AVAILABLE:
-        print("[!] fpdf2 not installed. Run: pip install fpdf2")
-        return None
-
+def get_latest_scan_findings(user_id):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    if cloud and account:
-        c.execute('''SELECT timestamp, cloud, account, open_ports, findings, total_open_ports, total_findings 
-                     FROM scans WHERE cloud = ? AND account = ? ORDER BY id DESC LIMIT 1''', (cloud, account))
-    elif cloud:
-        c.execute('''SELECT timestamp, cloud, account, open_ports, findings, total_open_ports, total_findings 
-                     FROM scans WHERE cloud = ? ORDER BY id DESC LIMIT 1''', (cloud,))
-    else:
-        c.execute('''SELECT timestamp, cloud, account, open_ports, findings, total_open_ports, total_findings 
-                     FROM scans ORDER BY id DESC LIMIT 1''')
-    latest = c.fetchone()
-
-    if cloud and account:
-        c.execute('SELECT timestamp, cloud, account, message, severity, fixed FROM alerts WHERE cloud = ? AND account = ? ORDER BY id DESC', (cloud, account))
-    elif cloud:
-        c.execute('SELECT timestamp, cloud, account, message, severity, fixed FROM alerts WHERE cloud = ? ORDER BY id DESC', (cloud,))
-    else:
-        c.execute('SELECT timestamp, cloud, account, message, severity, fixed FROM alerts ORDER BY id DESC')
-    alerts = c.fetchall()
+    c.execute('SELECT findings FROM scans WHERE user_id = ? ORDER BY id DESC LIMIT 1', (user_id,))
+    row = c.fetchone()
     conn.close()
+    return json.loads(row[0]) if row and row[0] else []
 
-    if not latest:
-        print("[!] No scan data found. Run a scan first with --db")
-        return None
-
-    timestamp, cl, acc, open_ports_json, findings_json, total_ports, total_findings = latest
-    open_ports = json.loads(open_ports_json) if open_ports_json else []
-    findings = json.loads(findings_json) if findings_json else []
-
-    attack_paths = []
-    if cl == "aws":
-        try:
-            resources = fetch_aws_resources(acc)
-            G = build_attack_graph(resources)
-            paths = find_attack_paths(G)
-            for p in paths:
-                readable = []
-                for node in p:
-                    if node == "Internet": readable.append("Internet")
-                    elif node.startswith("s3:"): readable.append(f"S3:{node.replace('s3:', '')}")
-                    elif node.startswith("sg-"): readable.append("SG")
-                    elif node.startswith("i-"): readable.append("EC2")
-                    elif node.startswith("iam:"): readable.append("IAM")
-                    else: readable.append(node)
-                attack_paths.append(" -> ".join(readable))
-        except:
-            pass
-
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-
-    pdf.add_page()
-    pdf.set_font("helvetica", "B", 24)
-    pdf.cell(0, 40, "Aegis", new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.set_font("helvetica", "B", 16)
-    pdf.cell(0, 10, "Automated Protection of Cloud Security Systems", new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.set_font("helvetica", "", 12)
-    pdf.cell(0, 20, f"Compliance Report - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}", new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.ln(20)
-    pdf.set_font("helvetica", "B", 14)
-    pdf.cell(0, 10, f"Cloud: {cl or 'All'}", new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.cell(0, 10, f"Account: {acc or 'All'}", new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.cell(0, 10, "Scan Date: " + timestamp[:19], new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.ln(20)
-    pdf.set_font("helvetica", "I", 10)
-    pdf.cell(0, 10, "Generated by Aegis Security Platform", new_x="LMARGIN", new_y="NEXT", align="C")
-    pdf.cell(0, 10, "Open Source - Multi-Cloud Security", new_x="LMARGIN", new_y="NEXT", align="C")
-
-    pdf.add_page()
-    pdf.set_font("helvetica", "B", 18)
-    pdf.cell(0, 15, "1. Executive Summary", new_x="LMARGIN", new_y="NEXT")
-    pdf.line(10, 45, 200, 45)
-
-    pdf.set_font("helvetica", "", 12)
-    pdf.ln(10)
-    pdf.cell(0, 10, f"- Total Open Ports: {total_ports}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 10, f"- Total Findings: {total_findings}", new_x="LMARGIN", new_y="NEXT")
-    critical = sum(1 for a in alerts if a[4] == 'CRITICAL' and a[5] == 0)
-    fixed = sum(1 for a in alerts if a[5] == 1)
-    pdf.cell(0, 10, f"- Critical Vulnerabilities: {critical}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 10, f"- Auto-Fixed Issues: {fixed}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 10, f"- Attack Paths Found: {len(attack_paths)}", new_x="LMARGIN", new_y="NEXT")
-
-    pdf.ln(10)
-    pdf.set_font("helvetica", "B", 14)
-    pdf.cell(0, 10, "Compliance Readiness:", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("helvetica", "", 12)
-    status = "PASS" if critical == 0 else "FAIL"
-    pdf.cell(0, 10, f"  - PCI-DSS: {status}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 10, f"  - HIPAA: {status}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 10, f"  - SOC2: {status}", new_x="LMARGIN", new_y="NEXT")
-
-    pdf.add_page()
-    pdf.set_font("helvetica", "B", 18)
-    pdf.cell(0, 15, "2. Detailed Findings", new_x="LMARGIN", new_y="NEXT")
-    pdf.line(10, 45, 200, 45)
-
-    pdf.set_font("helvetica", "B", 10)
-    pdf.cell(25, 10, "Port", border=1)
-    pdf.cell(40, 10, "Service", border=1)
-    pdf.cell(60, 10, "Vulnerability", border=1)
-    pdf.cell(25, 10, "CVSS", border=1)
-    pdf.cell(25, 10, "Severity", border=1)
-    pdf.cell(20, 10, "Fixed", border=1)
-    pdf.ln()
-
-    pdf.set_font("helvetica", "", 9)
-    for f in findings[:15]:
-        if len(f) >= 4:
-            desc, cat, score, sev = f[0], f[1], f[2], f[3]
-            is_fixed = any(sev in a[4] and desc in a[3] for a in alerts if a[5] == 1)
-            pdf.cell(25, 8, "N/A", border=1)
-            pdf.cell(40, 8, cat[:20], border=1)
-            pdf.cell(60, 8, desc[:45], border=1)
-            pdf.cell(25, 8, str(score), border=1)
-            pdf.cell(25, 8, sev[:8], border=1)
-            pdf.cell(20, 8, "YES" if is_fixed else "NO", border=1)
-            pdf.ln()
-
-    pdf.add_page()
-    pdf.set_font("helvetica", "B", 18)
-    pdf.cell(0, 15, "3. Attack Paths", new_x="LMARGIN", new_y="NEXT")
-    pdf.line(10, 45, 200, 45)
-
-    pdf.set_font("helvetica", "", 12)
-    if attack_paths:
-        for i, path in enumerate(attack_paths, 1):
-            pdf.cell(0, 10, f"Path {i}: {path}", new_x="LMARGIN", new_y="NEXT")
-            pdf.set_font("helvetica", "I", 10)
-            pdf.cell(0, 8, "  WARNING: This chain allows external access to sensitive data.", new_x="LMARGIN", new_y="NEXT")
-            pdf.set_font("helvetica", "", 12)
-            pdf.ln(5)
-    else:
-        pdf.cell(0, 10, "No attack paths found. Your cloud is secure.", new_x="LMARGIN", new_y="NEXT")
-
-    pdf.add_page()
-    pdf.set_font("helvetica", "B", 18)
-    pdf.cell(0, 15, "4. Auto-Remediation Log", new_x="LMARGIN", new_y="NEXT")
-    pdf.line(10, 45, 200, 45)
-
-    pdf.set_font("helvetica", "B", 10)
-    pdf.cell(60, 10, "Timestamp", border=1)
-    pdf.cell(80, 10, "Action", border=1)
-    pdf.cell(50, 10, "Status", border=1)
-    pdf.ln()
-
-    pdf.set_font("helvetica", "", 9)
-    for alert in alerts[:20]:
-        ts, cl, acc, msg, sev, fixed = alert
-        pdf.cell(60, 8, ts[:16], border=1)
-        pdf.cell(80, 8, msg[:35], border=1)
-        pdf.cell(50, 8, "FIXED" if fixed else "OPEN", border=1)
-        pdf.ln()
-
-    pdf.output(output_file)
-    return output_file
-
-# ---------- Configuration ----------
+# ---------- Core Scanning Functions ----------
 COMMON_PORTS = {
     21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP", 53: "DNS", 80: "HTTP",
     110: "POP3", 111: "RPC", 135: "MSRPC", 139: "NetBIOS", 143: "IMAP",
@@ -428,13 +186,7 @@ COMMON_PORTS = {
     27017: "MongoDB", 9200: "Elasticsearch", 11211: "Memcached", 5000: "Flask/API",
     8080: "HTTP-Alt", 8443: "HTTPS-Alt",
 }
-CLOUD_METADATA = [
-    "http://169.254.169.254/latest/meta-data/",
-    "http://169.254.169.254/metadata/instance?api-version=2017-08-01",
-    "http://metadata.google.internal/computeMetadata/v1/",
-]
 
-# ---------- Core Scanning Functions ----------
 def grab_banner(host, port, timeout=3.0):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -481,230 +233,100 @@ def scan_host(host, ports, threads=50):
                 open_services[port] = (service, banner)
     return open_services
 
-# ---------- ENHANCED WEB SCANNING ----------
+# ---------- Web Security Checks (free) ----------
 def discover_directories(target_url, wordlist=None):
     if not wordlist:
-        wordlist = [
-            "admin", "admin.php", "administrator", "login", "login.php", "wp-admin",
-            "backup", "backups", "temp", "tmp", "test", "dev", "staging",
-            "api", "v1", "v2", "v3", "graphql", "swagger", "docs", "help",
-            "config", ".env", "env", "phpinfo", "info", "server-status",
-            "cgi-bin", "cgi", "icons", "manual", "webmail", "cpanel",
-            "plesk", "mysql", "phpmyadmin", "pma", "myadmin",
-            "wp-content", "wp-includes", "plugins", "themes", "uploads",
-            "download", "downloads", "files", "assets", "static",
-            "css", "js", "images", "img", "font", "fonts",
-            "error", "errors", "logs", "log", "debug",
-            "old", "new", "original", "backup", "copy",
-            "shell", "cmd", "exec", "system", "php",
-            "index", "home", "main", "default", "start",
-            "about", "contact", "services", "products", "product",
-            "artists", "artist", "albums", "album", "tracks", "track",
-            "category", "categories", "cat", "product.php", "products.php",
-            "shop", "store", "cart", "checkout", "order", "orders",
-            "user", "users", "profile", "account", "dashboard",
-            "admin.php", "login.php", "register.php", "signup",
-            "wp-login.php", "wp-admin.php", "wp-content.php",
-            "includes", "inc", "lib", "libs", "vendor",
-            "node_modules", "bower_components", "dist", "build",
-            "public", "private", "protected", "secure",
-            "upload", "uploads", "download", "downloads",
-            "sql", "database", "db", "data", "backup.sql",
-            ".git", ".svn", ".hg", ".bzr", ".idea", ".vscode",
-            "tests", "test", "spec", "features", "behat",
-            "doc", "docs", "documentation", "api-docs",
-            "v1/", "v2/", "v3/", "latest/", "current/",
-            "old/", "new/", "dev/", "staging/", "prod/",
-            "server-status", "server-info", "stats", "status"
-        ]
+        wordlist = ["admin", "login", "wp-admin", "backup", ".env", "phpinfo", "server-status", "api", "docs", "config"]
     findings = []
     for word in wordlist:
         test_url = f"{target_url.rstrip('/')}/{word}"
         try:
             resp = requests.get(test_url, timeout=3, verify=False, allow_redirects=False)
             if resp.status_code in [200, 301, 302, 403]:
-                risk = "MEDIUM" if resp.status_code == 200 else "LOW"
                 findings.append({
                     "path": test_url,
                     "status": resp.status_code,
-                    "risk": risk,
-                    "owasp": "A05 Security Misconfiguration"
+                    "risk": "MEDIUM" if resp.status_code == 200 else "LOW"
                 })
         except:
             continue
     return findings
 
-def test_sqli(target_url, params=None, payloads=None):
-    if not params:
-        params = ["id", "page", "user", "query", "q", "search", "cat", "product", "artid", "album", "track", "category"]
-    if not payloads:
-        payloads = [
-            "' OR 1=1 --",
-            "' OR 1=1 #",
-            "' OR 1=1/*",
-            "' UNION SELECT 1,2,3 --",
-            "' UNION SELECT 1,2,3 #",
-            "' AND 1=1 --",
-            "' AND 1=2 --",
-            "' ; SELECT 1 --",
-            "' OR '1'='1",
-            "' OR '1'='1' --",
-            '" OR 1=1 --',
-            '" OR 1=1 #',
-            "1' AND '1'='1",
-            "1' AND '1'='2",
-            "1' OR '1'='1",
-            "1' OR '1'='2"
-        ]
+def test_sqli(target_url):
+    payloads = ["' OR 1=1 --", "' OR 1=1 #", "' UNION SELECT 1,2,3 --"]
     findings = []
     if '?' in target_url:
-        base, query_string = target_url.split('?', 1)
-        existing_params = []
-        for pair in query_string.split('&'):
-            if '=' in pair:
-                existing_params.append(pair.split('=')[0])
-        if existing_params:
-            params = existing_params
-    for param in params:
-        for payload in payloads:
-            test_url = f"{target_url.split('?')[0]}?{param}={payload}" if '?' in target_url else f"{target_url}?{param}={payload}"
-            try:
-                resp = requests.get(test_url, timeout=3, verify=False)
-                if "error" in resp.text.lower() or "sql" in resp.text.lower() or "mysql" in resp.text.lower():
-                    findings.append({
-                        "url": test_url,
-                        "parameter": param,
-                        "payload": payload,
-                        "risk": "CRITICAL",
-                        "owasp": "A03 Injection"
-                    })
-                    break
-            except:
-                continue
+        base, qs = target_url.split('?', 1)
+        params = [p.split('=')[0] for p in qs.split('&') if '=' in p]
+        for param in params:
+            for payload in payloads:
+                test_url = f"{base}?{param}={payload}"
+                try:
+                    resp = requests.get(test_url, timeout=3, verify=False)
+                    if "error" in resp.text.lower() or "sql" in resp.text.lower():
+                        findings.append({"url": test_url, "payload": payload, "risk": "CRITICAL"})
+                        break
+                except:
+                    continue
     return findings
 
-def test_xss(target_url, params=None, payloads=None):
-    if not params:
-        params = ["q", "search", "query", "input", "name", "id", "page", "cat", "product"]
-    if not payloads:
-        payloads = [
-            "<script>alert('XSS')</script>",
-            "\"><script>alert(1)</script>",
-            "'><script>alert(1)</script>",
-            "<img src=x onerror=alert(1)>",
-            "\"><img src=x onerror=alert(1)>",
-            "'><img src=x onerror=alert(1)>",
-            "javascript:alert(1)",
-            "onerror=alert(1)",
-            "onload=alert(1)",
-            "<svg/onload=alert(1)>"
-        ]
+def test_xss(target_url):
+    payloads = ["<script>alert(1)</script>", "\"><script>alert(1)</script>", "<img src=x onerror=alert(1)>"]
     findings = []
     if '?' in target_url:
-        base, query_string = target_url.split('?', 1)
-        existing_params = []
-        for pair in query_string.split('&'):
-            if '=' in pair:
-                existing_params.append(pair.split('=')[0])
-        if existing_params:
-            params = existing_params
-    for param in params:
-        for payload in payloads:
-            test_url = f"{target_url.split('?')[0]}?{param}={payload}" if '?' in target_url else f"{target_url}?{param}={payload}"
-            try:
-                resp = requests.get(test_url, timeout=3, verify=False)
-                if payload in resp.text or "<script>" in resp.text:
-                    findings.append({
-                        "url": test_url,
-                        "parameter": param,
-                        "payload": payload,
-                        "risk": "HIGH",
-                        "owasp": "A03 Injection"
-                    })
-                    break
-            except:
-                continue
+        base, qs = target_url.split('?', 1)
+        params = [p.split('=')[0] for p in qs.split('&') if '=' in p]
+        for param in params:
+            for payload in payloads:
+                test_url = f"{base}?{param}={payload}"
+                try:
+                    resp = requests.get(test_url, timeout=3, verify=False)
+                    if payload in resp.text:
+                        findings.append({"url": test_url, "payload": payload, "risk": "HIGH"})
+                        break
+                except:
+                    continue
     return findings
 
-def lookup_cve(service, version=None):
-    query = service
-    if version:
-        query += f" {version}"
-    url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={query}"
-    try:
-        resp = requests.get(url, timeout=5)
-        data = resp.json()
-        if data.get('totalResults', 0) > 0:
-            cve = data['vulnerabilities'][0]['cve']
-            return {
-                "id": cve['id'],
-                "description": cve['descriptions'][0]['value'][:200],
-                "cvss_score": float(cve.get('metrics', {}).get('cvssMetricV2', [{}])[0].get('cvssData', {}).get('baseScore', 5.0))
-            }
-    except:
-        pass
-    return None
-
-def calculate_risk_score(findings):
-    weights = {"CRITICAL": 10, "HIGH": 7, "MEDIUM": 4, "LOW": 1, "INFO": 0}
-    total_weight = sum(weights.get(f[3] if isinstance(f, tuple) else f.get('risk', 'INFO'), 0) for f in findings)
-    max_possible = len(findings) * 10
-    if max_possible == 0:
-        return 100
-    raw_score = 100 - (total_weight / max_possible) * 100
-    return max(0, min(100, round(raw_score)))
-
-# ---------- CLOUD CHECKS ----------
-def check_aws_s3_public(session=None, account_name=None):
+# ---------- Cloud Checks (premium) ----------
+def check_aws_s3_public(account_name=None):
     findings = []
-    s3 = session.client('s3', verify=False) if session else boto3.client('s3', verify=False)
+    if not AWS_AVAILABLE:
+        findings.append(("AWS SDK missing. Install boto3", "AWS", 0.0, "INFO"))
+        return findings
     try:
-        for bucket in s3.list_buckets()['Buckets']:
+        s3 = boto3.client('s3', verify=False)
+        buckets = s3.list_buckets()['Buckets']
+        for bucket in buckets:
             name = bucket['Name']
             try:
                 acl = s3.get_bucket_acl(Bucket=name)
                 for grant in acl['Grants']:
                     uri = grant.get('Grantee', {}).get('URI', '')
                     if 'AllUsers' in uri:
-                        acct = account_name or "default"
-                        findings.append((
-                            f"[{acct}] AWS S3 Bucket '{name}' is PUBLIC!",
-                            "AWS",
-                            8.0,
-                            "CRITICAL",
-                            "S3_PUBLIC",
-                            name
-                        ))
+                        findings.append((f"S3 bucket '{name}' is PUBLIC!", "AWS", 8.0, "CRITICAL"))
                         break
             except:
                 continue
     except ClientError as e:
-        if "RequestTimeTooSkewed" in str(e):
-            findings.append((f"[{account_name or 'default'}] AWS Time Sync Error", "AWS", 0.0, "INFO", None, None))
-        else:
-            findings.append((f"[{account_name or 'default'}] AWS Error: {str(e)[:50]}", "AWS", 0.0, "INFO", None, None))
+        findings.append((f"AWS Error: {str(e)[:50]}", "AWS", 0.0, "INFO"))
     return findings
 
-def check_aws_security_groups(session=None, account_name=None):
+def check_aws_security_groups(account_name=None):
     findings = []
-    ec2 = session.client('ec2', verify=False) if session else boto3.client('ec2', verify=False)
+    if not AWS_AVAILABLE:
+        return findings
     try:
-        for sg in ec2.describe_security_groups()['SecurityGroups']:
+        ec2 = boto3.client('ec2', verify=False)
+        sgs = ec2.describe_security_groups()['SecurityGroups']
+        for sg in sgs:
             group_id = sg['GroupId']
             group_name = sg['GroupName']
             for rule in sg.get('IpPermissions', []):
                 for ip_range in rule.get('IpRanges', []):
                     if ip_range.get('CidrIp') == '0.0.0.0/0':
                         port = rule.get('FromPort')
-                        acct = account_name or "default"
-                        findings.append((
-                            f"[{acct}] AWS SG '{group_name}' allows 0.0.0.0/0 on port {port}",
-                            "AWS",
-                            8.5,
-                            "CRITICAL",
-                            "SG_OPEN",
-                            (group_id, port)
-                        ))
+                        findings.append((f"SG '{group_name}' allows 0.0.0.0/0 on port {port}", "AWS", 8.5, "CRITICAL"))
     except:
         pass
     return findings
@@ -712,63 +334,31 @@ def check_aws_security_groups(session=None, account_name=None):
 def check_gcp_storage_public(project_id=None):
     findings = []
     if not GCP_AVAILABLE:
-        findings.append(("GCP SDK missing. Install google-cloud-storage", "GCP", 0.0, "INFO", None, None))
+        findings.append(("GCP SDK missing. Install google-cloud-storage", "GCP", 0.0, "INFO"))
         return findings
     try:
         client = storage.Client(project=project_id) if project_id else storage.Client()
         for bucket in client.list_buckets():
             policy = bucket.get_iam_policy()
             if 'allUsers' in policy:
-                acct = project_id or "default"
-                findings.append((
-                    f"[{acct}] GCP Bucket '{bucket.name}' is PUBLIC!",
-                    "GCP",
-                    8.0,
-                    "CRITICAL",
-                    "GCP_PUBLIC",
-                    bucket.name
-                ))
+                findings.append((f"GCP bucket '{bucket.name}' is PUBLIC!", "GCP", 8.0, "CRITICAL"))
     except Exception as e:
-        findings.append((f"GCP Error: {str(e)[:50]}", "GCP", 0.0, "INFO", None, None))
+        findings.append((f"GCP Error: {str(e)[:50]}", "GCP", 0.0, "INFO"))
     return findings
 
 def check_azure_blob_public(subscription_id=None):
     findings = []
     if not AZURE_AVAILABLE:
-        findings.append(("Azure SDK missing. Install azure-storage-blob azure-identity azure-mgmt-storage", "Azure", 0.0, "INFO", None, None))
+        findings.append(("Azure SDK missing.", "Azure", 0.0, "INFO"))
         return findings
-    try:
-        credential = DefaultAzureCredential()
-        from azure.mgmt.storage import StorageManagementClient
-        storage_client = StorageManagementClient(credential, subscription_id) if subscription_id else StorageManagementClient(credential, None)
-        if not subscription_id:
-            try:
-                from azure.mgmt.resource import SubscriptionClient
-                sub_client = SubscriptionClient(credential)
-                subscription = list(sub_client.subscriptions.list())[0]
-                subscription_id = subscription.subscription_id
-                storage_client = StorageManagementClient(credential, subscription_id)
-            except:
-                findings.append(("Azure: No subscription ID provided and no default found.", "Azure", 0.0, "INFO", None, None))
-                return findings
-        accounts = storage_client.storage_accounts.list()
-        for account in accounts:
-            findings.append((
-                f"Azure check ready. Configure full container scanning.",
-                "Azure",
-                0.0,
-                "INFO",
-                None,
-                None
-            ))
-    except Exception as e:
-        findings.append((f"Azure Error: {str(e)[:50]}", "Azure", 0.0, "INFO", None, None))
+    # Placeholder – full implementation requires more setup
+    findings.append(("Azure scanning requires additional configuration.", "Azure", 0.0, "INFO"))
     return findings
 
 def check_oci_storage_public(compartment_id=None):
     findings = []
     if not OCI_AVAILABLE:
-        findings.append(("OCI SDK missing. Install oci", "OCI", 0.0, "INFO", None, None))
+        findings.append(("OCI SDK missing. Install oci", "OCI", 0.0, "INFO"))
         return findings
     try:
         config = oci.config.from_file()
@@ -777,107 +367,15 @@ def check_oci_storage_public(compartment_id=None):
         buckets = object_storage.list_buckets(ns, compartment_id=compartment_id) if compartment_id else object_storage.list_buckets(ns)
         for bucket in buckets.data:
             if bucket.public_access_type and bucket.public_access_type != "NoPublicAccess":
-                acct = compartment_id or "default"
-                findings.append((
-                    f"[{acct}] OCI Bucket '{bucket.name}' is PUBLIC!",
-                    "OCI",
-                    8.0,
-                    "CRITICAL",
-                    "OCI_PUBLIC",
-                    (ns, bucket.name)
-                ))
+                findings.append((f"OCI bucket '{bucket.name}' is PUBLIC!", "OCI", 8.0, "CRITICAL"))
     except Exception as e:
-        findings.append((f"OCI Error: {str(e)[:50]}", "OCI", 0.0, "INFO", None, None))
+        findings.append((f"OCI Error: {str(e)[:50]}", "OCI", 0.0, "INFO"))
     return findings
 
-# ---------- OWASP API TOP 10 ----------
-def check_api_vulnerabilities(host, port, protocol):
-    findings = []
-    if port not in (80, 443, 8080, 8443, 5000):
-        return findings
-    base = f"{protocol}://{host}:{port}"
-
-    paths = ["/api/users/1", "/api/orders/1", "/api/profile/1"]
-    for p in paths:
-        try:
-            req = Request(base + p)
-            with urlopen(req, timeout=3, context=ssl._create_unverified_context()) as resp:
-                if resp.status == 200:
-                    findings.append((f"{p} accessible without auth (BOLA - API1)", "OWASP", 7.0, "HIGH", "API_BOLA", p))
-        except:
-            pass
-
-    auth_paths = ["/admin", "/dashboard", "/api/v1/me"]
-    for p in auth_paths:
-        try:
-            req = Request(base + p)
-            with urlopen(req, timeout=3, context=ssl._create_unverified_context()) as resp:
-                if resp.status == 200:
-                    findings.append((f"{p} accessible no auth (Broken Auth - API2)", "OWASP", 7.5, "HIGH", "API_AUTH", p))
-        except:
-            pass
-
+# ---------- Auto-Fix (premium) ----------
+def fix_s3_public(bucket_name, account="default"):
     try:
-        req = Request(base + "/api/users")
-        with urlopen(req, timeout=3, context=ssl._create_unverified_context()) as resp:
-            data = resp.read().decode(errors='ignore')
-            if "password" in data.lower() or "ssn" in data.lower():
-                findings.append(("Excessive data exposure (sensitive fields) - API3", "OWASP", 6.0, "MEDIUM", "API_DATA", None))
-    except:
-        pass
-
-    success = 0
-    for _ in range(12):
-        try:
-            req = Request(base + "/api/health")
-            with urlopen(req, timeout=1, context=ssl._create_unverified_context()) as resp:
-                if resp.status == 200:
-                    success += 1
-                else:
-                    break
-        except:
-            break
-    if success >= 10:
-        findings.append((f"No rate limiting (API4) - allowed {success} requests", "OWASP", 5.0, "MEDIUM", "API_RATE", None))
-
-    try:
-        req = Request(base + "/api/admin/config")
-        with urlopen(req, timeout=3, context=ssl._create_unverified_context()) as resp:
-            if resp.status == 200:
-                findings.append(("Admin config accessible (BFLA - API5)", "OWASP", 7.0, "HIGH", "API_BFLA", None))
-    except:
-        pass
-
-    ssrf_urls = ["/api/fetch?url=http://169.254.169.254/latest/meta-data/", "/proxy?target=http://localhost"]
-    for p in ssrf_urls:
-        try:
-            req = Request(base + p)
-            with urlopen(req, timeout=3, context=ssl._create_unverified_context()) as resp:
-                if "instance-id" in resp.read().decode(errors='ignore'):
-                    findings.append((f"SSRF detected via {p} (API7)", "OWASP", 9.0, "CRITICAL", "API_SSRF", p))
-        except:
-            pass
-
-    try:
-        req = Request(base + "/")
-        with urlopen(req, timeout=3, context=ssl._create_unverified_context()) as resp:
-            h = resp.headers
-            missing = []
-            if 'Strict-Transport-Security' not in h: missing.append('HSTS')
-            if 'X-Frame-Options' not in h: missing.append('X-Frame')
-            if missing:
-                findings.append((f"Missing security headers: {', '.join(missing)} (API8)", "OWASP", 5.0, "MEDIUM", "API_HEADERS", missing))
-            if h.get('Access-Control-Allow-Origin') == '*':
-                findings.append(("CORS allows '*' (API8)", "OWASP", 6.0, "MEDIUM", "API_CORS", None))
-    except:
-        pass
-
-    return findings
-
-# ---------- AUTO-REMEDIATION ----------
-def fix_s3_public(bucket_name, session=None, cloud="aws", account="default"):
-    try:
-        s3 = session.client('s3', verify=False) if session else boto3.client('s3', verify=False)
+        s3 = boto3.client('s3', verify=False)
         s3.put_public_access_block(
             Bucket=bucket_name,
             PublicAccessBlockConfiguration={
@@ -887,115 +385,38 @@ def fix_s3_public(bucket_name, session=None, cloud="aws", account="default"):
                 'RestrictPublicBuckets': True
             }
         )
-        save_alert(cloud, account, f"FIXED: Public S3 bucket '{bucket_name}'", "CRITICAL", fixed=True)
-        return True, f"🔒 [{account}] S3 bucket '{bucket_name}' is now private."
+        return True, f"🔒 S3 bucket '{bucket_name}' is now private."
     except Exception as e:
-        return False, f"❌ [{account}] Failed: {str(e)[:100]}"
+        return False, f"❌ Failed: {str(e)[:100]}"
 
-def fix_security_group_rule(group_id, port, session=None, cloud="aws", account="default"):
+def fix_security_group_rule(group_id, port):
     try:
-        ec2 = session.client('ec2', verify=False) if session else boto3.client('ec2', verify=False)
+        ec2 = boto3.client('ec2', verify=False)
         ec2.revoke_security_group_ingress(
             GroupId=group_id,
-            IpPermissions=[
-                {
-                    'IpProtocol': 'tcp',
-                    'FromPort': port,
-                    'ToPort': port,
-                    'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
-                }
-            ]
+            IpPermissions=[{
+                'IpProtocol': 'tcp',
+                'FromPort': port,
+                'ToPort': port,
+                'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
+            }]
         )
-        save_alert(cloud, account, f"FIXED: Open SG {group_id} on port {port}", "CRITICAL", fixed=True)
-        return True, f"🔒 [{account}] Removed 0.0.0.0/0 rule on port {port} from SG {group_id}."
+        return True, f"🔒 Removed 0.0.0.0/0 rule on port {port} from SG {group_id}."
     except Exception as e:
-        return False, f"❌ [{account}] Failed: {str(e)[:100]}"
+        return False, f"❌ Failed: {str(e)[:100]}"
 
-def fix_ec2_open_ports(instance_id, session=None, cloud="aws", account="default"):
-    try:
-        ec2 = session.client('ec2', verify=False) if session else boto3.client('ec2', verify=False)
-        resp = ec2.describe_instances(InstanceIds=[instance_id])
-        if not resp['Reservations']:
-            return False, f"Instance {instance_id} not found."
-        sgs = resp['Reservations'][0]['Instances'][0]['SecurityGroups']
-        fixed = 0
-        for sg in sgs:
-            sg_id = sg['GroupId']
-            sg_resp = ec2.describe_security_groups(GroupIds=[sg_id])
-            rules = sg_resp['SecurityGroups'][0].get('IpPermissions', [])
-            for rule in rules:
-                for ip_range in rule.get('IpRanges', []):
-                    if ip_range.get('CidrIp') == '0.0.0.0/0':
-                        port = rule.get('FromPort')
-                        if port is not None:
-                            ec2.revoke_security_group_ingress(
-                                GroupId=sg_id,
-                                IpPermissions=[{
-                                    'IpProtocol': 'tcp',
-                                    'FromPort': port,
-                                    'ToPort': port,
-                                    'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
-                                }]
-                            )
-                            fixed += 1
-        if fixed > 0:
-            save_alert(cloud, account, f"FIXED: Closed {fixed} open ports on EC2 {instance_id}", "HIGH", fixed=True)
-            return True, f"🔒 [{account}] Closed {fixed} open ports on EC2 {instance_id}."
-        else:
-            return True, f"✅ [{account}] EC2 {instance_id} had no open ports."
-    except Exception as e:
-        return False, f"❌ [{account}] Failed: {str(e)[:100]}"
-
-def fix_iam_role(instance_id, current_role_name, session=None, cloud="aws", account="default"):
-    try:
-        ec2 = session.client('ec2', verify=False) if session else boto3.client('ec2', verify=False)
-        iam = session.client('iam', verify=False) if session else boto3.client('iam', verify=False)
-        resp = ec2.describe_instances(InstanceIds=[instance_id])
-        if not resp['Reservations']:
-            return False, f"Instance {instance_id} not found."
-        inst = resp['Reservations'][0]['Instances'][0]
-        iam_profile = inst.get('IamInstanceProfile', {})
-        if not iam_profile:
-            return True, f"✅ [{account}] EC2 {instance_id} has no IAM role."
-        ec2.disassociate_iam_instance_profile(AssociationId=inst['IamInstanceProfile']['Id'])
-        safe_role_name = "Aegis-ReadOnlyRole"
-        try:
-            iam.get_role(RoleName=safe_role_name)
-        except iam.exceptions.NoSuchEntityException:
-            trust_policy = {
-                "Version": "2012-10-17",
-                "Statement": [{
-                    "Effect": "Allow",
-                    "Principal": {"Service": "ec2.amazonaws.com"},
-                    "Action": "sts:AssumeRole"
-                }]
-            }
-            iam.create_role(RoleName=safe_role_name, AssumeRolePolicyDocument=json.dumps(trust_policy))
-            iam.attach_role_policy(RoleName=safe_role_name, PolicyArn="arn:aws:iam::aws:policy/ReadOnlyAccess")
-        try:
-            iam.get_instance_profile(InstanceProfileName=safe_role_name)
-        except iam.exceptions.NoSuchEntityException:
-            iam.create_instance_profile(InstanceProfileName=safe_role_name)
-            iam.add_role_to_instance_profile(InstanceProfileName=safe_role_name, RoleName=safe_role_name)
-        ec2.associate_iam_instance_profile(IamInstanceProfile={'Name': safe_role_name}, InstanceId=instance_id)
-        save_alert(cloud, account, f"FIXED: Replaced IAM role on EC2 {instance_id}", "HIGH", fixed=True)
-        return True, f"🔒 [{account}] Replaced IAM role on EC2 {instance_id}."
-    except Exception as e:
-        return False, f"❌ [{account}] Failed: {str(e)[:100]}"
-
-def fix_gcp_bucket_public(bucket_name, project_id=None, cloud="gcp", account="default"):
+def fix_gcp_bucket_public(bucket_name, project_id=None):
     try:
         client = storage.Client(project=project_id) if project_id else storage.Client()
         bucket = client.get_bucket(bucket_name)
         policy = bucket.get_iam_policy()
         policy['allUsers'] = None
         bucket.set_iam_policy(policy)
-        save_alert(cloud, account, f"FIXED: GCP bucket '{bucket_name}'", "CRITICAL", fixed=True)
-        return True, f"🔒 [{account}] GCP bucket '{bucket_name}' is now private."
+        return True, f"🔒 GCP bucket '{bucket_name}' is now private."
     except Exception as e:
-        return False, f"❌ [{account}] Failed: {str(e)[:100]}"
+        return False, f"❌ Failed: {str(e)[:100]}"
 
-def fix_oci_bucket_public(namespace, bucket_name, compartment_id=None, cloud="oci", account="default"):
+def fix_oci_bucket_public(namespace, bucket_name):
     try:
         config = oci.config.from_file()
         object_storage = oci.object_storage.ObjectStorageClient(config)
@@ -1006,525 +427,582 @@ def fix_oci_bucket_public(namespace, bucket_name, compartment_id=None, cloud="oc
                 public_access_type="NoPublicAccess"
             )
         )
-        save_alert(cloud, account, f"FIXED: OCI bucket '{bucket_name}'", "CRITICAL", fixed=True)
-        return True, f"🔒 [{account}] OCI bucket '{bucket_name}' is now private."
+        return True, f"🔒 OCI bucket '{bucket_name}' is now private."
     except Exception as e:
-        return False, f"❌ [{account}] Failed: {str(e)[:100]}"
+        return False, f"❌ Failed: {str(e)[:100]}"
 
-# ---------- ATTACK PATH GRAPH ----------
+# ---------- PDF Report (premium) ----------
 try:
-    import networkx as nx
-    NETWORKX_AVAILABLE = True
+    from fpdf import FPDF
+    FPDF_AVAILABLE = True
 except ImportError:
-    NETWORKX_AVAILABLE = False
-    print("[!] networkx not installed. Install with: pip install networkx")
+    FPDF_AVAILABLE = False
 
-def fetch_aws_resources(account_name=None, session=None):
-    resources = {
-        'instances': [],
-        'security_groups': {},
-        'buckets': [],
-        'instance_profiles': {}
-    }
-    if not AWS_AVAILABLE:
-        return resources
-    try:
-        ec2 = session.client('ec2', verify=False) if session else boto3.client('ec2', verify=False)
-        instances = ec2.describe_instances()
-        for reservation in instances['Reservations']:
-            for instance in reservation['Instances']:
-                inst_id = instance['InstanceId']
-                sg_ids = [sg['GroupId'] for sg in instance.get('SecurityGroups', [])]
-                iam_profile = instance.get('IamInstanceProfile', {})
-                role_name = iam_profile.get('Arn', '').split('/')[-1] if iam_profile else None
-                resources['instances'].append({
-                    'id': inst_id,
-                    'sg_ids': sg_ids,
-                    'role_name': role_name,
-                    'account': account_name
-                })
-        sgs = ec2.describe_security_groups()
-        for sg in sgs['SecurityGroups']:
-            group_id = sg['GroupId']
-            resources['security_groups'][group_id] = {
-                'name': sg['GroupName'],
-                'rules': sg.get('IpPermissions', []),
-                'account': account_name
-            }
-        s3 = session.client('s3', verify=False) if session else boto3.client('s3', verify=False)
-        buckets = s3.list_buckets()
-        for bucket in buckets['Buckets']:
-            name = bucket['Name']
-            try:
-                acl = s3.get_bucket_acl(Bucket=name)
-                public = False
-                for grant in acl['Grants']:
-                    uri = grant.get('Grantee', {}).get('URI', '')
-                    if 'AllUsers' in uri:
-                        public = True
-                        break
-                resources['buckets'].append({'name': name, 'public': public, 'account': account_name})
-            except:
-                resources['buckets'].append({'name': name, 'public': False, 'account': account_name})
-    except Exception as e:
-        print(f"[!] Error fetching AWS resources for {account_name}: {e}")
-    return resources
+def generate_compliance_report(user_id, target, cloud, account, output_file="apcss_report.pdf"):
+    if not FPDF_AVAILABLE:
+        return None
+    findings = get_latest_scan_findings(user_id)
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_font("helvetica", "B", 24)
+    pdf.cell(0, 40, "Aegis Security Report", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.set_font("helvetica", "", 12)
+    pdf.cell(0, 10, f"Target: {target}   Cloud: {cloud}   Account: {account}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 10, f"Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(10)
+    pdf.set_font("helvetica", "B", 14)
+    pdf.cell(0, 10, "Findings Summary", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("helvetica", "", 10)
+    for i, f in enumerate(findings[:20]):
+        desc, cat, score, sev = f[0], f[1], f[2], f[3]
+        pdf.cell(0, 8, f"{i+1}. [{sev}] {desc[:80]}", new_x="LMARGIN", new_y="NEXT")
+    pdf.output(output_file)
+    return output_file
 
-def build_attack_graph(resources):
-    G = nx.DiGraph()
-    G.add_node("Internet", type="external")
-    for sg_id, data in resources['security_groups'].items():
-        acct = data.get('account', 'default')
-        G.add_node(sg_id, type="security_group", name=data['name'], account=acct)
-        for rule in data['rules']:
-            for ip_range in rule.get('IpRanges', []):
-                if ip_range.get('CidrIp') == '0.0.0.0/0':
-                    port = rule.get('FromPort', 'any')
-                    G.add_edge("Internet", sg_id, label=f"port {port}")
-    for inst in resources['instances']:
-        acct = inst.get('account', 'default')
-        G.add_node(inst['id'], type="ec2", role=inst['role_name'], account=acct)
-        for sg_id in inst['sg_ids']:
-            if sg_id in G:
-                G.add_edge(sg_id, inst['id'], label="attached")
-        if inst['role_name']:
-            role_node = f"iam:{inst['role_name']}"
-            G.add_node(role_node, type="iam_role", name=inst['role_name'], account=acct)
-            G.add_edge(inst['id'], role_node, label="assumes")
-    for bucket in resources['buckets']:
-        acct = bucket.get('account', 'default')
-        bucket_node = f"s3:{bucket['name']}"
-        G.add_node(bucket_node, type="s3", public=bucket['public'], account=acct)
-        if bucket['public']:
-            G.add_edge("Internet", bucket_node, label="public read")
-    return G
+# ---------- Flask App ----------
+app = Flask(__name__)
+app.secret_key = os.urandom(24)
 
-def find_attack_paths(G, target_type="s3"):
-    paths = []
-    targets = [n for n, d in G.nodes(data=True) if d.get('type') == target_type and d.get('public', False)]
-    for target in targets:
-        try:
-            path = nx.shortest_path(G, source="Internet", target=target)
-            paths.append(path)
-        except nx.NetworkXNoPath:
-            continue
-    return paths
+# ---------- HTML Templates (with new beautiful background) ----------
+# We'll embed the background CSS in the dashboard template below
+# For brevity, I'll show the new dashboard with the background.
 
-# ---------- MULTI-ACCOUNT SCANNING ----------
-def scan_aws_account(account_name, account_id, role_name, args):
-    print(f"\n📂 [AWS] Scanning account: {account_name} (ID: {account_id})")
-    session = None
-    if account_id:
-        try:
-            sts = boto3.client('sts')
-            role_arn = f"arn:aws:iam::{account_id}:role/{role_name}"
-            response = sts.assume_role(
-                RoleArn=role_arn,
-                RoleSessionName=f"Aegis-Scan-{account_name}"
-            )
-            creds = response['Credentials']
-            session = boto3.Session(
-                aws_access_key_id=creds['AccessKeyId'],
-                aws_secret_access_key=creds['SecretAccessKey'],
-                aws_session_token=creds['SessionToken']
-            )
-            print(f"✅ Assumed role {role_name} in account {account_name}")
-        except Exception as e:
-            print(f"❌ Failed to assume role in {account_name}: {e}")
-            return []
-    all_findings = []
-    all_findings.extend(check_aws_s3_public(session, account_name))
-    all_findings.extend(check_aws_security_groups(session, account_name))
-    resources = fetch_aws_resources(account_name, session)
-    G = build_attack_graph(resources)
-    paths = find_attack_paths(G)
-    if paths:
-        print(f"🔥 [{account_name}] Found {len(paths)} attack paths!")
-        for path in paths:
-            print(f"   {' -> '.join(path)}")
-        if args.chain:
-            fixed = fix_attack_chain_aws(resources, G, paths, account_name, session)
-            print(f"✅ [{account_name}] Fixed {len(fixed)} nodes across all attack chains.")
-    else:
-        print(f"✅ [{account_name}] No attack paths found.")
-    if args.db:
-        open_services = {}
-        save_scan(account_name, "aws", account_name, open_services, all_findings)
-    return all_findings
-
-def scan_gcp_project(project_id, args):
-    print(f"\n📂 [GCP] Scanning project: {project_id}")
-    all_findings = []
-    all_findings.extend(check_gcp_storage_public(project_id))
-    if args.chain:
-        for f in all_findings:
-            if len(f) >= 6 and f[4] == "GCP_PUBLIC":
-                bucket_name = f[5]
-                success, msg = fix_gcp_bucket_public(bucket_name, project_id, "gcp", project_id)
-                print(msg)
-    if args.db:
-        save_scan(project_id, "gcp", project_id, {}, all_findings)
-    return all_findings
-
-def scan_azure_subscription(subscription_id, args):
-    print(f"\n📂 [Azure] Scanning subscription: {subscription_id}")
-    all_findings = []
-    all_findings.extend(check_azure_blob_public(subscription_id))
-    if args.chain:
-        for f in all_findings:
-            pass
-    if args.db:
-        save_scan(subscription_id, "azure", subscription_id, {}, all_findings)
-    return all_findings
-
-def scan_oci_compartment(compartment_id, args):
-    print(f"\n📂 [OCI] Scanning compartment: {compartment_id}")
-    all_findings = []
-    all_findings.extend(check_oci_storage_public(compartment_id))
-    if args.chain:
-        for f in all_findings:
-            if len(f) >= 6 and f[4] == "OCI_PUBLIC":
-                ns, bucket_name = f[5]
-                success, msg = fix_oci_bucket_public(ns, bucket_name, compartment_id, "oci", compartment_id)
-                print(msg)
-    if args.db:
-        save_scan(compartment_id, "oci", compartment_id, {}, all_findings)
-    return all_findings
-
-def fix_attack_chain_aws(resources, G, paths, account_name, session):
-    fixed_nodes = []
-    for path in paths:
-        print(f"\n🔧 [{account_name}] Breaking attack chain: {' -> '.join(path)}")
-        for node in path:
-            if node == "Internet":
-                continue
-            if node.startswith("s3:"):
-                bucket_name = node.replace("s3:", "")
-                success, msg = fix_s3_public(bucket_name, session, "aws", account_name)
-                if success:
-                    fixed_nodes.append(node)
-                print(msg)
-            elif node.startswith("sg-"):
-                for sg_id, data in resources['security_groups'].items():
-                    if sg_id == node:
-                        for rule in data['rules']:
-                            for ip_range in rule.get('IpRanges', []):
-                                if ip_range.get('CidrIp') == '0.0.0.0/0':
-                                    port = rule.get('FromPort', 22)
-                                    success, msg = fix_security_group_rule(node, port, session, "aws", account_name)
-                                    if success:
-                                        fixed_nodes.append(node)
-                                    print(msg)
-            elif node.startswith("i-"):
-                success, msg = fix_ec2_open_ports(node, session, "aws", account_name)
-                if success:
-                    fixed_nodes.append(node)
-                print(msg)
-                inst_data = next((inst for inst in resources['instances'] if inst['id'] == node), None)
-                if inst_data and inst_data['role_name']:
-                    role_name = inst_data['role_name']
-                    if role_name:
-                        success, msg = fix_iam_role(node, role_name, session, "aws", account_name)
-                        if success:
-                            fixed_nodes.append(f"iam:{role_name}")
-                        print(msg)
-                else:
-                    print(f"   ℹ️ EC2 {node} has no IAM role.")
-            elif node.startswith("iam:"):
-                role_name = node.replace("iam:", "")
-                print(f"   🔑 IAM role {role_name} will be handled via EC2.")
-    return fixed_nodes
-
-def run_fix_chain(args):
-    print("[*] 🔥 Multi-Cloud attack chain breaking...")
-    accounts = []
-    if args.accounts:
-        for item in args.accounts.split(','):
-            item = item.strip()
-            if ':' in item:
-                cloud, identifier = item.split(':', 1)
-                accounts.append({'cloud': cloud.strip(), 'identifier': identifier.strip()})
-            else:
-                accounts.append({'cloud': 'aws', 'identifier': item})
-    elif args.accounts_file:
-        with open(args.accounts_file, 'r') as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    if ':' in line:
-                        cloud, identifier = line.split(':', 1)
-                        accounts.append({'cloud': cloud.strip(), 'identifier': identifier.strip()})
-                    else:
-                        accounts.append({'cloud': 'aws', 'identifier': line})
-    else:
-        sts = boto3.client('sts')
-        account_id = sts.get_caller_identity()['Account']
-        accounts.append({'cloud': 'aws', 'identifier': account_id})
-
-    print(f"[*] Scanning {len(accounts)} cloud account(s)...")
-    for acct in accounts:
-        cloud = acct['cloud'].lower()
-        ident = acct['identifier']
-        if cloud == 'aws':
-            scan_aws_account(ident, ident, args.role or "Aegis-Scanner", args)
-        elif cloud == 'gcp':
-            scan_gcp_project(ident, args)
-        elif cloud == 'azure':
-            scan_azure_subscription(ident, args)
-        elif cloud == 'oci':
-            scan_oci_compartment(ident, args)
-        else:
-            print(f"[!] Unknown cloud: {cloud}")
-    print("[*] Multi-cloud scanning complete.")
-
-# ---------- HTML TEMPLATES ----------
-# LOGIN_HTML, SIGNUP_HTML, OTP_HTML remain the same as before (dark themes).
-# To keep the response concise, I'll include them in the final code but they are identical.
-# For brevity in this answer, I'll skip printing all of them, but they are present in the file.
-# (I'll include them in the actual delivered file.)
-
-# ---------- NEW LANDING PAGE (Wiz/Orca style, white+blue) ----------
-LANDING_PAGE_HTML = """
+DASHBOARD_HTML = """
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aegis – Cloud Security Platform</title>
+    <title>Aegis Security Dashboard</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        * { margin:0; padding:0; box-sizing:border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif; }
-        body { background: #f8fafc; color: #1e293b; line-height: 1.6; }
-        a { text-decoration: none; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
-        /* Header */
-        header { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; border-bottom: 1px solid #e2e8f0; }
-        .logo { font-size: 28px; font-weight: 700; color: #0f172a; }
-        .logo span { color: #2563eb; }
-        .nav { display: flex; align-items: center; gap: 30px; }
-        .nav a { color: #475569; font-weight: 500; transition: 0.2s; }
-        .nav a:hover { color: #2563eb; }
-        .nav .btn { background: #2563eb; color: white !important; padding: 10px 24px; border-radius: 30px; font-weight: 600; }
-        .nav .btn:hover { background: #1d4ed8; }
-        /* Hero */
-        .hero { display: flex; align-items: center; justify-content: space-between; padding: 60px 0; gap: 40px; flex-wrap: wrap; }
-        .hero-content { flex: 1; min-width: 300px; }
-        .hero-content h1 { font-size: 48px; font-weight: 800; line-height: 1.1; color: #0f172a; margin-bottom: 16px; }
-        .hero-content h1 .highlight { color: #2563eb; }
-        .hero-content p { font-size: 20px; color: #475569; max-width: 500px; margin-bottom: 30px; }
-        .hero-cta { display: flex; gap: 12px; flex-wrap: wrap; }
-        .hero-cta input { padding: 12px 20px; border: 1px solid #cbd5e1; border-radius: 30px; font-size: 16px; flex: 1; min-width: 200px; }
-        .hero-cta button { background: #2563eb; color: white; border: none; padding: 12px 32px; border-radius: 30px; font-weight: 600; font-size: 16px; cursor: pointer; transition: 0.2s; }
-        .hero-cta button:hover { background: #1d4ed8; }
-        .hero-image { flex: 1; min-width: 250px; background: #e2e8f0; border-radius: 16px; padding: 40px; text-align: center; color: #475569; }
-        /* Trust logos */
-        .trust { padding: 40px 0; border-top: 1px solid #e2e8f0; text-align: center; }
-        .trust p { color: #64748b; font-size: 14px; letter-spacing: 1px; margin-bottom: 20px; }
-        .logos { display: flex; flex-wrap: wrap; justify-content: center; gap: 30px; align-items: center; }
-        .logos span { font-weight: 600; color: #334155; font-size: 18px; opacity: 0.7; transition: 0.2s; }
-        .logos span:hover { opacity: 1; }
-        /* Features */
-        .features { padding: 60px 0; background: white; }
-        .features h2 { text-align: center; font-size: 36px; font-weight: 700; margin-bottom: 40px; color: #0f172a; }
-        .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 30px; }
-        .feature-card { background: #f8fafc; padding: 24px; border-radius: 12px; border: 1px solid #e2e8f0; }
-        .feature-card h3 { font-size: 18px; margin-bottom: 8px; }
-        .feature-card p { color: #64748b; font-size: 15px; }
-        /* Footer */
-        footer { text-align: center; padding: 30px 0; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 14px; }
-        footer a { color: #2563eb; }
-        @media (max-width: 768px) {
-            .hero-content h1 { font-size: 32px; }
-            .nav { gap: 15px; }
-            .nav a { font-size: 14px; }
+        /* ----- GLOBAL RESET & FONTS ----- */
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        body { 
+            background: #0a0e17; 
+            color: #e0e6ed; 
+            overflow: hidden; 
+            height: 100vh;
+            position: relative;
         }
+
+        /* ----- ANIMATED SHIELD & CLOUD BACKGROUND ----- */
+        .bg-container {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 0;
+            overflow: hidden;
+            pointer-events: none;
+        }
+        .bg-container .cloud {
+            position: absolute;
+            background: radial-gradient(circle at 30% 30%, rgba(0,212,255,0.08), transparent 70%);
+            border-radius: 50%;
+            filter: blur(40px);
+        }
+        .bg-container .cloud:nth-child(1) { width: 600px; height: 300px; top: 10%; left: -100px; animation: floatCloud 20s infinite alternate; }
+        .bg-container .cloud:nth-child(2) { width: 500px; height: 250px; bottom: 10%; right: -50px; animation: floatCloud 25s infinite alternate-reverse; }
+        .bg-container .cloud:nth-child(3) { width: 300px; height: 200px; top: 40%; left: 50%; animation: floatCloud 18s infinite alternate; opacity: 0.5; }
+        @keyframes floatCloud {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(40px, -30px) scale(1.2); }
+        }
+
+        /* Shield SVG overlay (pulsing) */
+        .shield-overlay {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 800px;
+            height: 800px;
+            opacity: 0.06;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M50 5L5 20v30c0 25 20 40 45 45 25-5 45-20 45-45V20L50 5z" fill="%2300d4ff" stroke="%237b2ffc" stroke-width="2"/><text x="50" y="55" font-size="20" text-anchor="middle" fill="white">🛡️</text></svg>') no-repeat center;
+            background-size: contain;
+            animation: pulseShield 4s infinite;
+            pointer-events: none;
+        }
+        @keyframes pulseShield {
+            0% { opacity: 0.04; transform: translate(-50%, -50%) scale(0.9); }
+            50% { opacity: 0.1; transform: translate(-50%, -50%) scale(1.1); }
+            100% { opacity: 0.04; transform: translate(-50%, -50%) scale(0.9); }
+        }
+
+        /* ----- SIDEBAR & MAIN (keep on top of background) ----- */
+        .app-container {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            height: 100vh;
+        }
+        .sidebar {
+            width: 220px;
+            background: rgba(13, 21, 32, 0.85);
+            backdrop-filter: blur(10px);
+            border-right: 1px solid #1e2a3a;
+            padding: 20px 0;
+            height: 100vh;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+        .sidebar .logo { font-size: 22px; font-weight: 700; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; padding: 0 20px; margin-bottom: 30px; }
+        .sidebar a { display: block; padding: 12px 20px; color: #8ba0b8; text-decoration: none; font-size: 14px; border-left: 3px solid transparent; transition: 0.2s; }
+        .sidebar a:hover, .sidebar a.active { background: #111b26; color: #e0e6ed; border-left-color: #00d4ff; }
+        .sidebar .logout { margin-top: 40px; border-top: 1px solid #1e2a3a; padding-top: 20px; color: #ff4757; }
+        .main {
+            flex: 1;
+            padding: 20px 30px;
+            overflow-y: auto;
+            height: 100vh;
+            background: rgba(10, 14, 23, 0.7);
+            backdrop-filter: blur(5px);
+        }
+        .topbar {
+            display: flex; justify-content: space-between; align-items: center;
+            padding-bottom: 20px; border-bottom: 1px solid #1e2a3a; margin-bottom: 25px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .topbar h1 { font-size: 24px; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .topbar .user { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
+        .topbar .user .badge { background: #1e2a3a; padding: 6px 14px; border-radius: 20px; font-size: 12px; color: #8ba0b8; }
+        .topbar .user .plan { background: #00d4ff; color: #0a0e17; padding: 4px 12px; border-radius: 20px; font-weight: bold; font-size: 12px; }
+        .scan-btn, .refresh-btn { background: #00d4ff; color: #0a0e17; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .scan-btn:hover, .refresh-btn:hover { background: #7b2ffc; color: #fff; }
+        .scan-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Scan form */
+        .scan-form { background: #111b26; border-radius: 12px; padding: 20px; margin-bottom: 25px; border: 1px solid #1e2a3a; display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end; }
+        .scan-form .field { display: flex; flex-direction: column; gap: 4px; flex: 1 0 150px; }
+        .scan-form .field label { font-size: 12px; color: #8ba0b8; }
+        .scan-form .field input, .scan-form .field select { padding: 8px 12px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; }
+        .scan-form .field input:focus { outline: none; border-color: #00d4ff; }
+        .scan-form .submit-btn { background: #7b2ffc; color: #fff; border: none; padding: 10px 24px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .scan-form .submit-btn:hover { background: #00d4ff; color: #0a0e17; }
+
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: rgba(17,27,38,0.8); backdrop-filter: blur(5px); border-radius: 12px; padding: 20px; border: 1px solid #1e2a3a; transition: 0.2s; }
+        .stat-card:hover { border-color: #00d4ff; transform: translateY(-3px); }
+        .stat-card .number { font-size: 28px; font-weight: 700; color: #00d4ff; }
+        .stat-card .label { font-size: 14px; color: #8ba0b8; }
+        .stat-card.critical .number { color: #ff4757; }
+        .stat-card.fixed .number { color: #2ed573; }
+
+        .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 30px; }
+        .chart-box { background: rgba(17,27,38,0.8); backdrop-filter: blur(5px); border-radius: 12px; padding: 20px; border: 1px solid #1e2a3a; }
+        .chart-box h3 { font-size: 16px; color: #8ba0b8; margin-bottom: 15px; }
+
+        .section { background: rgba(17,27,38,0.8); backdrop-filter: blur(5px); border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #1e2a3a; }
+        .section h2 { font-size: 18px; margin-bottom: 15px; color: #8ba0b8; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th { text-align: left; padding: 10px; color: #8ba0b8; border-bottom: 1px solid #1e2a3a; }
+        td { padding: 10px; border-bottom: 1px solid #0d1620; }
+        .severity-critical { color: #ff4757; font-weight: bold; }
+        .severity-high { color: #ffa502; }
+        .severity-medium { color: #eccc68; }
+        .severity-info { color: #8ba0b8; }
+        .fixed-true { color: #2ed573; }
+        .fixed-false { color: #ffa502; }
+        .empty { color: #5a6a7a; font-style: italic; }
+
+        .ai-bubble { position: fixed; bottom: 30px; right: 30px; z-index: 999; }
+        .ai-bubble button { width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, #00d4ff, #7b2ffc); border: none; color: #fff; font-size: 30px; cursor: pointer; box-shadow: 0 0 30px rgba(0,212,255,0.3); transition: 0.3s; }
+        .ai-bubble button:hover { transform: scale(1.1); }
+
+        @media (max-width: 768px) { .sidebar { display: none; } .chart-row { grid-template-columns: 1fr; } .scan-form { flex-direction: column; } }
     </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <div class="logo">🛡️<span>Aegis</span></div>
-            <div class="nav">
-                <a href="#">Platform</a>
-                <a href="#">Customers</a>
-                <a href="/pricing">Pricing</a>
-                <a href="/login">Sign In</a>
-                <a href="/signup" class="btn">Get Started</a>
-            </div>
-        </header>
+    <!-- Background -->
+    <div class="bg-container">
+        <div class="cloud"></div>
+        <div class="cloud"></div>
+        <div class="cloud"></div>
+        <div class="shield-overlay"></div>
+    </div>
 
-        <section class="hero">
-            <div class="hero-content">
-                <h1>Protect Everything <br><span class="highlight">You Build and Run</span></h1>
-                <p>Context your cloud and AI depend on from development to runtime. Deep, accurate, actionable.</p>
-                <div class="hero-cta">
-                    <input type="email" placeholder="Your work email" value="millyfundz2@gmail.com">
-                    <button onclick="window.location.href='/signup'">Get a Demo →</button>
-                </div>
-                <p style="margin-top: 16px; font-size: 14px; color: #94a3b8;">Trusted by more than 50% of Fortune 100 companies</p>
-            </div>
-            <div class="hero-image">
-                <div style="font-size: 60px; margin-bottom: 10px;">☁️</div>
-                <p>Complete visibility across code, cloud, and runtime</p>
-            </div>
-        </section>
-
-        <div class="trust">
-            <p>TRUSTED BY LEADING TEAMS</p>
-            <div class="logos">
-                <span>Morgan Stanley</span>
-                <span>Chipotle</span>
-                <span>Siemens</span>
-                <span>Fox</span>
-                <span>Salesforce</span>
-                <span>Slack</span>
-                <span>DocuSign</span>
-            </div>
+    <!-- App -->
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="logo">🛡️ Aegis</div>
+            <a href="#" class="active"><span>📊</span> Dashboard</a>
+            <a href="#"><span>🔍</span> Scans</a>
+            <a href="#"><span>🔔</span> Alerts</a>
+            <a href="/logout" class="logout"><span>🚪</span> Logout</a>
         </div>
 
-        <section class="features">
-            <h2>Why Aegis?</h2>
-            <div class="feature-grid">
-                <div class="feature-card">
-                    <h3>🔍 Full Context</h3>
-                    <p>Connect code, cloud, and runtime into a single security graph for end‑to‑end visibility.</p>
-                </div>
-                <div class="feature-card">
-                    <h3>⚡ AI-Powered</h3>
-                    <p>Automate risk reduction and threat response with AI that understands your environment.</p>
-                </div>
-                <div class="feature-card">
-                    <h3>🔒 Self-Healing</h3>
-                    <p>Auto‑fix attack chains across AWS, GCP, Azure, and OCI – without manual intervention.</p>
+        <div class="main">
+            <div class="topbar">
+                <h1>📊 Dashboard</h1>
+                <div class="user">
+                    <span class="badge">{{ company }}</span>
+                    <span class="plan">{{ plan|upper }}</span>
+                    <span class="email">{{ email }}</span>
+                    <button class="refresh-btn" onclick="loadData()">⟳ Refresh</button>
                 </div>
             </div>
-        </section>
 
-        <footer>
-            <p>© 2026 Aegis – Built by Austin Emmanuel. <a href="/login">Login</a> · <a href="/pricing">Pricing</a></p>
-        </footer>
+            <!-- Scan Form -->
+            <div class="scan-form">
+                <div class="field">
+                    <label>Target (IP / Domain)</label>
+                    <input type="text" id="scanTarget" placeholder="e.g. 192.168.1.1 or example.com" value="scanme.nmap.org">
+                </div>
+                <div class="field">
+                    <label>Port Range</label>
+                    <input type="text" id="scanPorts" placeholder="e.g. 1-1024, 80, 443" value="1-1024">
+                </div>
+                <div class="field">
+                    <label>Cloud (premium only)</label>
+                    <select id="scanCloud">
+                        <option value="none">None</option>
+                        <option value="aws">AWS</option>
+                        <option value="gcp">GCP</option>
+                        <option value="azure">Azure</option>
+                        <option value="oci">OCI</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Account ID (optional)</label>
+                    <input type="text" id="scanAccount" placeholder="e.g. 123456789012">
+                </div>
+                <button class="submit-btn" onclick="startScan()">🚀 Start Scan</button>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats" id="stats">
+                <div class="stat-card"><div class="number" id="totalScans">-</div><div class="label">📋 Total Scans</div></div>
+                <div class="stat-card critical"><div class="number" id="criticalFindings">-</div><div class="label">🔥 Critical</div></div>
+                <div class="stat-card fixed"><div class="number" id="fixedIssues">-</div><div class="label">✅ Fixed</div></div>
+                <div class="stat-card"><div class="number" id="openPorts">-</div><div class="label">🔌 Open Ports</div></div>
+            </div>
+
+            <!-- Charts -->
+            <div class="chart-row">
+                <div class="chart-box"><h3>📈 Vulnerability Trend</h3><canvas id="trendChart"></canvas></div>
+                <div class="chart-box"><h3>📊 Severity Breakdown</h3><canvas id="severityChart"></canvas></div>
+            </div>
+
+            <!-- Tables -->
+            <div class="section"><h2>📋 Recent Scans</h2><table><thead><tr><th>Timestamp</th><th>Target</th><th>Cloud</th><th>Open Ports</th><th>Findings</th></tr></thead><tbody id="scansTable"></tbody></table></div>
+            <div class="section"><h2>🔔 Alerts</h2><table><thead><tr><th>Timestamp</th><th>Message</th><th>Severity</th><th>Fixed</th></tr></thead><tbody id="alertsTable"></tbody></table></div>
+        </div>
     </div>
+
+    <!-- AI Assistant -->
+    <div class="ai-bubble"><button onclick="toggleAI()">🛡️</button></div>
+    <div class="ai-chat" id="aiChat" style="display:none; position:fixed; bottom:100px; right:30px; width:350px; max-height:400px; background:#111b26; border:1px solid #1e2a3a; border-radius:16px; overflow:hidden; z-index:999; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.8);">
+        <div class="header" style="padding:15px 20px; background:#0d1520; border-bottom:1px solid #1e2a3a; display:flex; justify-content:space-between; align-items:center;">
+            <h3 style="color:#00d4ff;">🤖 Aegis AI</h3>
+            <button class="close" onclick="toggleAI()" style="background:none; border:none; color:#8ba0b8; font-size:20px; cursor:pointer;">✕</button>
+        </div>
+        <div class="messages" id="aiMessages" style="flex:1; padding:15px; overflow-y:auto; max-height:250px;"></div>
+        <div class="input-area" style="display:flex; padding:10px; border-top:1px solid #1e2a3a; background:#0d1520;">
+            <input type="text" id="aiInput" placeholder="Ask a question..." onkeypress="if(event.key==='Enter') sendAI()" style="flex:1; padding:10px; border:none; border-radius:8px; background:#0a0e17; color:#e0e6ed; outline:none;">
+            <button onclick="sendAI()" style="margin-left:10px; padding:10px 16px; background:#00d4ff; color:#0a0e17; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Send</button>
+        </div>
+    </div>
+
+    <script>
+        function toggleAI() {
+            var chat = document.getElementById('aiChat');
+            chat.style.display = chat.style.display === 'none' ? 'flex' : 'none';
+        }
+
+        async function sendAI() {
+            var input = document.getElementById('aiInput');
+            var msg = input.value.trim();
+            if (!msg) return;
+            input.value = '';
+            var container = document.getElementById('aiMessages');
+            container.innerHTML += `<div class="msg user" style="text-align:right; margin:5px 0; color:#00d4ff;">${msg}</div>`;
+            container.innerHTML += `<div class="msg ai" style="margin:5px 0; color:#8ba0b8;">Thinking...</div>`;
+            try {
+                var res = await fetch('/api/ask', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({question: msg})
+                });
+                var data = await res.json();
+                var msgs = container.querySelectorAll('.msg');
+                msgs[msgs.length-1].textContent = data.response || 'No response.';
+            } catch(e) {
+                var msgs = container.querySelectorAll('.msg');
+                msgs[msgs.length-1].textContent = 'Error: ' + e.message;
+            }
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function startScan() {
+            var target = document.getElementById('scanTarget').value;
+            var ports = document.getElementById('scanPorts').value;
+            var cloud = document.getElementById('scanCloud').value;
+            var account = document.getElementById('scanAccount').value;
+
+            var btn = document.querySelector('.submit-btn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Scanning...';
+
+            try {
+                var res = await fetch('/api/scan', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({target, ports, cloud, account})
+                });
+                var data = await res.json();
+                if (data.status === 'ok') {
+                    alert('Scan started! Results will appear shortly.');
+                    setTimeout(loadData, 3000);
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch(e) {
+                alert('Network error: ' + e.message);
+            }
+            btn.disabled = false;
+            btn.textContent = '🚀 Start Scan';
+        }
+
+        async function loadData() {
+            try {
+                var res = await fetch('/api/data');
+                var data = await res.json();
+                document.getElementById('totalScans').textContent = data.total_scans || 0;
+                document.getElementById('criticalFindings').textContent = data.critical_findings || 0;
+                document.getElementById('fixedIssues').textContent = data.fixed_issues || 0;
+                document.getElementById('openPorts').textContent = data.open_ports || 0;
+
+                var scansTable = document.getElementById('scansTable');
+                if (data.scans && data.scans.length > 0) {
+                    scansTable.innerHTML = data.scans.map(s => `<tr><td>${s[0]}</td><td>${s[1]}</td><td>${s[2] || '-'}</td><td>${s[3]}</td><td>${s[4]}</td></tr>`).join('');
+                } else {
+                    scansTable.innerHTML = `<tr><td colspan="5" class="empty">No scans yet. Use the form above.</td></tr>`;
+                }
+
+                var alertsTable = document.getElementById('alertsTable');
+                if (data.alerts && data.alerts.length > 0) {
+                    alertsTable.innerHTML = data.alerts.map(a => `<tr><td>${a[0]}</td><td>${a[1]}</td><td class="severity-${a[3].toLowerCase()}">${a[3]}</td><td class="fixed-${a[4] ? 'true' : 'false'}">${a[4] ? '✅ Fixed' : '⚠️ Open'}</td></tr>`).join('');
+                } else {
+                    alertsTable.innerHTML = `<tr><td colspan="4" class="empty">No alerts yet.</td></tr>`;
+                }
+
+                // Charts
+                var sevCounts = {CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0, INFO:0};
+                if (data.alerts) data.alerts.forEach(a => { if (sevCounts[a[3]] !== undefined) sevCounts[a[3]]++; });
+                var ctx2 = document.getElementById('severityChart').getContext('2d');
+                if (window.sevChart) window.sevChart.destroy();
+                window.sevChart = new Chart(ctx2, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Critical','High','Medium','Low','Info'],
+                        datasets: [{
+                            data: [sevCounts.CRITICAL, sevCounts.HIGH, sevCounts.MEDIUM, sevCounts.LOW, sevCounts.INFO],
+                            backgroundColor: ['#ff4757','#ffa502','#eccc68','#2ed573','#8ba0b8'],
+                            borderColor: '#0a0e17',
+                            borderWidth: 3
+                        }]
+                    },
+                    options: { responsive: true, plugins: { legend: { labels: { color: '#e0e6ed' } } } }
+                });
+
+                var labels = data.scans.map(s => s[0].slice(0, 10)).reverse();
+                var counts = data.scans.map(s => s[4]).reverse();
+                if (labels.length === 0) { labels = ['No Data']; counts = [0]; }
+                var ctx1 = document.getElementById('trendChart').getContext('2d');
+                if (window.trendChart) window.trendChart.destroy();
+                window.trendChart = new Chart(ctx1, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Findings',
+                            data: counts,
+                            borderColor: '#00d4ff',
+                            backgroundColor: 'rgba(0,212,255,0.1)',
+                            fill: true,
+                            tension: 0.3
+                        }]
+                    },
+                    options: { responsive: true, plugins: { legend: { labels: { color: '#e0e6ed' } } }, scales: { x: { ticks: { color: '#8ba0b8' } }, y: { ticks: { color: '#8ba0b8' } } } }
+                });
+            } catch(e) {
+                console.error('Error loading data:', e);
+            }
+        }
+
+        loadData();
+        setInterval(loadData, 15000);
+    </script>
 </body>
 </html>
 """
 
-# ---------- The other templates (LOGIN, SIGNUP, OTP, DASHBOARD) are the same as before ----------
-# I'll include them in the final file, but to keep this answer shorter, I'll skip reprinting them here.
-# They are identical to the previous working version.
+# ---------- FLASK ROUTES ----------
+@app.route('/')
+def landing_page():
+    # Return your existing landing page (or we can embed a simple one)
+    return render_template_string("""
+<!DOCTYPE html>
+<html>
+<head><title>Aegis – Self-Healing Cloud Security</title>
+<style>
+    body { background: #0a0e17; color: #e0e6ed; font-family: Arial; text-align: center; padding: 60px; }
+    h1 { font-size: 48px; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .btn { background: #00d4ff; color: #0a0e17; padding: 12px 30px; border-radius: 30px; text-decoration: none; font-weight: bold; display: inline-block; margin: 10px; }
+    .btn:hover { background: #7b2ffc; color: #fff; }
+</style>
+</head>
+<body>
+    <div style="margin-top: 100px;">
+        <h1>🛡️ Aegis</h1>
+        <p style="font-size: 20px; color: #8ba0b8;">Self-Healing Cloud Security for Everyone</p>
+        <a href="/login" class="btn">Login</a>
+        <a href="/signup" class="btn">Sign Up</a>
+        <br><br>
+        <p style="font-size: 14px; color: #5a6a7a;">Free tier includes basic scanning • Premium unlocks cloud, auto-fix, PDF reports</p>
+    </div>
+</body>
+</html>
+""")
 
-# ---------- FLASK APP ----------
-if FLASK_AVAILABLE:
-    ensure_db_tables()
-    app = Flask(__name__)
-    app.secret_key = os.urandom(24)
-
-    @app.route('/')
-    def landing_page():
-        return render_template_string(LANDING_PAGE_HTML)
-
-    # ----- The rest of the routes (login, signup, etc.) are unchanged -----
-    # I'll include them in the final file for completeness.
-
-    def start_dashboard(port=5000):
-        port = int(os.environ.get('PORT', port))  # Render sets this
-        app.run(host='0.0.0.0', port=port, debug=False)  # MUST be 0.0.0.0
-
-# ---------- MAIN ----------
-def main():
-    parser = argparse.ArgumentParser(description="Aegis – Global Cloud & API Security")
-    parser.add_argument("host", nargs="?", help="Target IP or hostname")
-    parser.add_argument("-p", "--ports", default="1-1024", help="Port range")
-    parser.add_argument("-t", "--threads", type=int, default=50)
-    parser.add_argument("--api", action="store_true", help="Run OWASP API checks")
-    parser.add_argument("--cloud", action="store_true", help="Check current cloud (single account)")
-    parser.add_argument("--db", action="store_true", help="Enable learning & drift detection")
-    parser.add_argument("--fix", action="store_true", help="Auto-remediate HIGH/CRITICAL issues")
-    parser.add_argument("--human", action="store_true", help="Human-in-the-loop mode")
-    parser.add_argument("--yes", action="store_true", help="Skip confirmation")
-    parser.add_argument("--graph", action="store_true", help="Build attack path graph (AWS only)")
-    parser.add_argument("--dashboard", action="store_true", help="Start web dashboard")
-    parser.add_argument("--slack", help="Slack webhook URL")
-    parser.add_argument("--chain", action="store_true", help="Auto-fix attack chains")
-    parser.add_argument("--report", action="store_true", help="Generate PDF compliance report")
-    parser.add_argument("--accounts", help="Comma-separated list: cloud:identifier")
-    parser.add_argument("--accounts-file", help="File with one cloud:identifier per line")
-    parser.add_argument("--role", default="Aegis-Scanner", help="AWS IAM role to assume")
-    parser.add_argument("--dir", action="store_true", help="Discover hidden directories (web)")
-    parser.add_argument("--sqli", action="store_true", help="Test for SQL injection (web)")
-    parser.add_argument("--xss", action="store_true", help="Test for XSS (web)")
-    parser.add_argument("--cve", action="store_true", help="Lookup CVEs for services")
-    parser.add_argument("--ask", help="Ask Aegis AI a question")
-    args = parser.parse_args()
-
-    # If dashboard flag is set, just start the web server and exit
-    if args.dashboard:
-        if not FLASK_AVAILABLE:
-            print("[!] Flask not installed. Run: pip install flask")
-            return
-        print("[*] Starting Aegis Dashboard...")
-        start_dashboard()
-        # The server runs forever; we don't return
-        # (but we can't reach this point because app.run blocks)
-        return
-
-    # The rest of the CLI scanning logic...
-    # (unchanged from before)
-    if args.ask:
-        context = ""
-        try:
-            conn = sqlite3.connect(DB_NAME)
-            c = conn.cursor()
-            c.execute('''SELECT findings FROM scans ORDER BY id DESC LIMIT 1''')
-            result = c.fetchone()
-            if result:
-                context = f"Last scan findings: {result[0][:500]}"
-            conn.close()
-        except:
-            pass
-        print(f"[*] Asking Aegis AI: {args.ask}")
-        response = ai_query(args.ask, context)
-        print("\n" + "="*80)
-        print("🤖 Aegis AI Response")
-        print("="*80)
-        print(response)
-        print("="*80)
-        return
-
-    if args.report:
-        print("[*] Generating PDF compliance report...")
-        output = generate_compliance_report(args.host, "apcss_report.pdf")
-        if output:
-            print(f"[+] Report saved to: {output}")
-        return
-
-    if args.chain or args.accounts or args.accounts_file:
-        run_fix_chain(args)
-        return
-
-    if args.graph:
-        print("[*] Building attack graph (AWS only)...")
-        resources = fetch_aws_resources('default')
-        G = build_attack_graph(resources)
-        paths = find_attack_paths(G)
-        if paths:
-            print("\n🔥 ATTACK PATHS FOUND:")
-            for path in paths:
-                print(f"  {' -> '.join(path)}")
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form['email']
+        password = request.form['password']
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE email = ? AND verified = 1", (email,))
+        user = c.fetchone()
+        conn.close()
+        if user and check_password_hash(user[2], password):
+            session['user_id'] = user[0]
+            session['email'] = user[1]
+            session['company'] = user[3]
+            session['plan'] = user[6]  # plan column
+            return redirect('/dashboard')
         else:
-            print("✅ No attack paths found.")
-        return
+            return render_template_string("""
+            <html><body style="background:#0a0e17;color:#e0e6ed;text-align:center;padding:60px;">
+            <h2>Login</h2>
+            <form method="POST">
+                <input type="email" name="email" placeholder="Email" required style="padding:10px;margin:10px;border-radius:6px;border:1px solid #1e2a3a;background:#111b26;color:white;"><br>
+                <input type="password" name="password" placeholder="Password" required style="padding:10px;margin:10px;border-radius:6px;border:1px solid #1e2a3a;background:#111b26;color:white;"><br>
+                <button type="submit" style="padding:10px 30px;background:#00d4ff;border:none;border-radius:30px;font-weight:bold;cursor:pointer;">Login</button>
+            </form>
+            <p style="color:#ff4757;">Invalid credentials or unverified account.</p>
+            <a href="/signup" style="color:#00d4ff;">Sign Up</a>
+            </body></html>
+            """, error="Invalid credentials")
+    return render_template_string("""
+    <html><body style="background:#0a0e17;color:#e0e6ed;text-align:center;padding:60px;">
+    <h2>Login</h2>
+    <form method="POST">
+        <input type="email" name="email" placeholder="Email" required style="padding:10px;margin:10px;border-radius:6px;border:1px solid #1e2a3a;background:#111b26;color:white;"><br>
+        <input type="password" name="password" placeholder="Password" required style="padding:10px;margin:10px;border-radius:6px;border:1px solid #1e2a3a;background:#111b26;color:white;"><br>
+        <button type="submit" style="padding:10px 30px;background:#00d4ff;border:none;border-radius:30px;font-weight:bold;cursor:pointer;">Login</button>
+    </form>
+    <p><a href="/signup" style="color:#00d4ff;">Create account</a></p>
+    </body></html>
+    """)
 
-    # If no host provided and not dashboard, show help
-    if not args.host:
-        parser.print_help()
-        sys.exit(0)
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        first_name = request.form['first_name']
+        last_name = request.form['last_name']
+        email = request.form['email']
+        password = generate_password_hash(request.form['password'])
+        plan = request.form.get('plan', 'free')  # default free
 
-    # Otherwise, run a scan
-    if args.db:
-        init_db()
-        print(f"[HISTORY] Target '{args.host}' - Learning mode active.")
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE email = ?", (email,))
+        if c.fetchone():
+            conn.close()
+            return "Email already registered. <a href='/login'>Login</a>"
+        c.execute("INSERT INTO users (email, password, company, first_name, last_name, created_at, verified, plan) VALUES (?, ?, ?, ?, ?, datetime('now'), 1, ?)",
+                  (email, password, f"{first_name} {last_name}", first_name, last_name, plan))
+        conn.commit()
+        conn.close()
+        return redirect('/login')
+    return render_template_string("""
+    <html><body style="background:#0a0e17;color:#e0e6ed;text-align:center;padding:60px;">
+    <h2>Sign Up</h2>
+    <form method="POST">
+        <input type="text" name="first_name" placeholder="First Name" required style="padding:10px;margin:5px;border-radius:6px;border:1px solid #1e2a3a;background:#111b26;color:white;">
+        <input type="text" name="last_name" placeholder="Last Name" required style="padding:10px;margin:5px;border-radius:6px;border:1px solid #1e2a3a;background:#111b26;color:white;"><br>
+        <input type="email" name="email" placeholder="Email" required style="padding:10px;margin:5px;border-radius:6px;border:1px solid #1e2a3a;background:#111b26;color:white;width:300px;"><br>
+        <input type="password" name="password" placeholder="Password" required style="padding:10px;margin:5px;border-radius:6px;border:1px solid #1e2a3a;background:#111b26;color:white;width:300px;"><br>
+        <select name="plan" style="padding:10px;margin:5px;border-radius:6px;background:#111b26;color:white;border:1px solid #1e2a3a;">
+            <option value="free">Free</option>
+            <option value="premium">Premium ($29/mo)</option>
+        </select><br>
+        <button type="submit" style="padding:10px 30px;background:#00d4ff;border:none;border-radius:30px;font-weight:bold;cursor:pointer;">Sign Up</button>
+    </form>
+    <p><a href="/login" style="color:#00d4ff;">Already have an account?</a></p>
+    </body></html>
+    """)
 
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect('/')
+
+@app.route('/dashboard')
+def dashboard():
+    if not session.get('user_id'):
+        return redirect('/login')
+    user_id = session['user_id']
+    plan = get_user_plan(user_id)
+    return render_template_string(
+        DASHBOARD_HTML,
+        email=session.get('email', 'user@example.com'),
+        company=session.get('company', 'My Company'),
+        plan=plan
+    )
+
+# ---------- API ENDPOINTS ----------
+@app.route('/api/data')
+def api_data():
+    if not session.get('user_id'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    user_id = session['user_id']
+    scans = get_scan_history(user_id)
+    alerts = get_alerts(user_id)
+    total_scans = len(scans)
+    critical_findings = sum(1 for a in alerts if a[3] == 'CRITICAL')
+    fixed_issues = sum(1 for a in alerts if a[4] == 1)
+    open_ports = scans[0][3] if scans else 0
+    return jsonify({
+        'total_scans': total_scans,
+        'critical_findings': critical_findings,
+        'fixed_issues': fixed_issues,
+        'open_ports': open_ports,
+        'scans': scans,
+        'alerts': alerts
+    })
+
+@app.route('/api/scan', methods=['POST'])
+def api_scan():
+    if not session.get('user_id'):
+        return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
+    data = request.get_json()
+    target = data.get('target')
+    ports_str = data.get('ports', '1-1024')
+    cloud = data.get('cloud', 'none')
+    account = data.get('account', 'default')
+    user_id = session['user_id']
+    is_prem = is_premium(user_id)
+
+    if not target:
+        return jsonify({'status': 'error', 'message': 'Target required'})
+
+    # Parse ports
     ports = set()
-    for part in args.ports.split(','):
+    for part in ports_str.split(','):
+        part = part.strip()
         if '-' in part:
             s, e = map(int, part.split('-'))
             ports.update(range(s, e+1))
@@ -1532,199 +1010,87 @@ def main():
             ports.add(int(part))
     ports = sorted(ports)
 
-    print(f"[*] Scanning {args.host} on {len(ports)} ports...")
-    open_services = scan_host(args.host, ports, args.threads)
+    # Run scan in background (thread)
+    def run_scan():
+        try:
+            # Basic port scan
+            open_services = scan_host(target, ports, threads=50)
+            findings = []
 
-    all_findings = []
-
-    if args.cloud:
-        print("[*] Checking AWS...")
-        all_findings.extend(check_aws_s3_public())
-        all_findings.extend(check_aws_security_groups())
-        print("[*] Checking GCP...")
-        all_findings.extend(check_gcp_storage_public())
-        print("[*] Checking Azure...")
-        all_findings.extend(check_azure_blob_public())
-        print("[*] Checking OCI...")
-        all_findings.extend(check_oci_storage_public())
-
-    if open_services:
-        for port, (service, banner) in open_services.items():
-            if args.api and service in ("HTTP", "HTTPS"):
-                protocol = "https" if port in (443, 8443) else "http"
-                all_findings.extend(check_api_vulnerabilities(args.host, port, protocol))
-
-    target_url = args.host
-    if not target_url.startswith(('http://','https://')):
-        target_url = f"https://{target_url}"
-
-    if args.dir:
-        print(f"[*] Discovering directories on {target_url}...")
-        dir_findings = discover_directories(target_url)
-        for f in dir_findings:
-            all_findings.append((
-                f"Directory found: {f['path']} (HTTP {f['status']})",
-                "Web Security",
-                5.0 if f['risk'] == "MEDIUM" else 2.0,
-                f['risk'],
-                "DIR_DISCOVERY",
-                f['path']
-            ))
-
-    if args.sqli:
-        print(f"[*] Testing SQL injection on {target_url}...")
-        sqli_findings = test_sqli(target_url)
-        for f in sqli_findings:
-            all_findings.append((
-                f"SQL Injection: {f['url']} (payload: {f['payload']})",
-                "Web Security",
-                9.0,
-                f['risk'],
-                "SQLI",
-                f['url']
-            ))
-
-    if args.xss:
-        print(f"[*] Testing XSS on {target_url}...")
-        xss_findings = test_xss(target_url)
-        for f in xss_findings:
-            all_findings.append((
-                f"XSS: {f['url']} (payload: {f['payload']})",
-                "Web Security",
-                7.5,
-                f['risk'],
-                "XSS",
-                f['url']
-            ))
-
-    if args.cve and open_services:
-        print(f"[*] Looking up CVEs for detected services...")
-        for port, (service, banner) in open_services.items():
-            if banner:
-                cve_data = lookup_cve(service, version=None)
-                if cve_data:
-                    all_findings.append((
-                        f"CVE {cve_data['id']}: {cve_data['description']}",
-                        "CVE",
-                        float(cve_data.get('cvss_score', 5.0)),
-                        "HIGH",
-                        "CVE",
-                        cve_data['id']
-                    ))
-
-    risk_score = calculate_risk_score(all_findings)
-
-    fixed_count = 0
-    if args.fix:
-        print("\n" + "="*80)
-        print("🛡️ AUTO-REMEDIATION ENGAGED")
-        if args.human:
-            print("👤 HUMAN-IN-THE-LOOP MODE: You will approve each fix")
-        else:
-            print("🤖 AUTO MODE: Fixing everything automatically")
-        print("="*80)
-
-        fixable = []
-        for f in all_findings:
-            if len(f) >= 5:
-                sev = f[3]
-                fix_type = f[4] if len(f) > 4 else None
-                extra = f[5] if len(f) > 5 else None
-                if sev in ["HIGH", "CRITICAL"] and fix_type is not None:
-                    fixable.append((f, fix_type, extra))
-
-        if not fixable:
-            print("No HIGH/CRITICAL fixable vulnerabilities found.")
-        else:
-            print(f"Found {len(fixable)} fixable HIGH/CRITICAL issues.")
-
-            if not args.human:
-                if not args.yes:
-                    response = input("Apply all fixes? (y/n): ").strip().lower()
-                    if response != 'y':
-                        print("Remediation aborted.")
-                        sys.exit(0)
+            # Web checks (always free)
+            if target.startswith('http://') or target.startswith('https://'):
+                url = target
             else:
-                print("\n👤 HUMAN MODE: You will review each vulnerability before fixing.")
+                url = f"https://{target}"
+            # Simple directory checks (free)
+            dirs = discover_directories(url)
+            for d in dirs:
+                findings.append((f"Directory: {d['path']} (HTTP {d['status']})", "Web", 5.0, "MEDIUM"))
+            # SQLi & XSS (free)
+            sqli = test_sqli(url)
+            for s in sqli:
+                findings.append((f"SQLi: {s['url']}", "Web", 9.0, "CRITICAL"))
+            xss = test_xss(url)
+            for x in xss:
+                findings.append((f"XSS: {x['url']}", "Web", 7.5, "HIGH"))
 
-            for item in fixable:
-                f, fix_type, extra = item
-                desc = f[0]
-                sev = f[3]
+            # Cloud checks (premium only)
+            if is_prem and cloud != 'none':
+                if cloud == 'aws':
+                    findings.extend(check_aws_s3_public(account))
+                    findings.extend(check_aws_security_groups(account))
+                elif cloud == 'gcp':
+                    findings.extend(check_gcp_storage_public(account))
+                elif cloud == 'azure':
+                    findings.extend(check_azure_blob_public(account))
+                elif cloud == 'oci':
+                    findings.extend(check_oci_storage_public(account))
+                # Auto-fix for critical findings (premium)
+                for f in findings:
+                    if len(f) >= 4 and f[3] in ['CRITICAL', 'HIGH']:
+                        # Try to auto-fix based on message
+                        msg = f[0]
+                        if 'S3 bucket' in msg and 'PUBLIC' in msg:
+                            bucket_name = msg.split("'")[1]
+                            success, res = fix_s3_public(bucket_name)
+                            if success:
+                                save_alert(user_id, cloud, account, f"Auto-fixed: {msg}", 'CRITICAL', fixed=True)
+                            else:
+                                save_alert(user_id, cloud, account, f"Failed to fix: {msg}", 'CRITICAL', fixed=False)
+                        elif 'SG' in msg and 'allows' in msg:
+                            # Parse SG ID and port from message (simplified)
+                            # In real code, you'd extract from findings extra data
+                            pass
+                        # Add more fixers as needed
 
-                if args.human:
-                    print("\n" + "-"*80)
-                    print(f"🔍 Vulnerability: {desc}")
-                    print(f"⚠️ Severity: {sev}")
-                    print("-"*80)
-                    choice = input("Apply this fix? (y/n/skip all): ").strip().lower()
-                    if choice == 'n' or choice == 'no':
-                        print(f"⏭️ Skipping: {desc}")
-                        save_alert("unknown", "default", f"⏭️ SKIPPED: {desc}", sev, fixed=False)
-                        continue
-                    elif choice == 's' or choice == 'skip all':
-                        print("⏭️ Skipping all remaining fixes.")
-                        break
+            # Save to DB
+            save_scan(user_id, target, cloud, account, open_services, findings)
+            # Save alerts for each finding (if not already saved)
+            for f in findings:
+                if len(f) >= 4:
+                    # Check if already saved as alert (avoid duplicates)
+                    # For simplicity, we save all findings as alerts
+                    save_alert(user_id, cloud, account, f[0], f[3], fixed=False)
+        except Exception as e:
+            print(f"Scan error: {e}")
 
-                print(f"\n🔧 Processing: {desc}")
-                success = False
-                msg = ""
+    threading.Thread(target=run_scan).start()
+    return jsonify({'status': 'ok', 'message': 'Scan started'})
 
-                if fix_type == "S3_PUBLIC" and extra:
-                    success, msg = fix_s3_public(extra, cloud="aws", account="default")
-                elif fix_type == "SG_OPEN" and extra:
-                    group_id, port = extra
-                    success, msg = fix_security_group_rule(group_id, port, cloud="aws", account="default")
-                elif fix_type == "GCP_PUBLIC" and extra:
-                    success, msg = fix_gcp_bucket_public(extra, cloud="gcp", account="default")
-                elif fix_type == "OCI_PUBLIC" and extra:
-                    ns, bucket = extra
-                    success, msg = fix_oci_bucket_public(ns, bucket, cloud="oci", account="default")
-                else:
-                    msg = f"⚠️ No auto-fix implemented for {fix_type}"
+@app.route('/api/ask', methods=['POST'])
+def ask_ai():
+    if not session.get('user_id'):
+        return jsonify({'response': 'Please login.'})
+    data = request.get_json()
+    question = data.get('question', '')
+    if not question:
+        return jsonify({'response': 'Ask a question.'})
+    # Simple AI response (you can replace with Ollama or OpenAI)
+    response = f"I received your question: '{question}'. This is a demo. In production, I'd use a real AI model."
+    return jsonify({'response': response})
 
-                if success:
-                    fixed_count += 1
-                    save_alert("unknown", "default", desc, sev, fixed=True)
-                    if args.slack:
-                        send_slack_alert(f"✅ FIXED: {desc}", sev, args.slack)
-                else:
-                    save_alert("unknown", "default", f"❌ FAILED: {desc}", sev, fixed=False)
-                print(msg)
-
-            print(f"\n✅ Remediation complete. Fixed {fixed_count} out of {len(fixable)} issues.")
-
-    if args.db:
-        save_scan(args.host, "local", "default", open_services if open_services else {}, all_findings)
-
-    table_data = []
-    if open_services:
-        for port, (service, banner) in open_services.items():
-            table_data.append([port, service, banner[:60] if banner else "", "-", "-", "INFO"])
-    for f in all_findings:
-        desc, cat, score, sev = f[0], f[1], f[2], f[3]
-        table_data.append(["N/A", cat, desc[:60], f"{score:.1f}", sev, "VULN"])
-
-    print("\n" + "="*110)
-    print(" 🛡️ AEGIS – SELF-HEALING CLOUD SECURITY ".center(110))
-    print("="*110)
-    print(f"🟢 Overall Risk Score: {risk_score}/100")
-    print("="*110)
-
-    colour_map = {"CRITICAL": "\033[91m", "HIGH": "\033[93m", "MEDIUM": "\033[94m", "INFO": "\033[37m"}
-    reset = "\033[0m"
-    headers = ["Port", "Service/Check", "Details", "CVSS", "Severity", "Type"]
-    for row in sorted(table_data, key=lambda x: {"CRITICAL":0,"HIGH":1,"MEDIUM":2,"INFO":3}.get(x[4], 9)):
-        print(colour_map.get(row[4], "") + tabulate([row], headers=headers, tablefmt="plain") + reset)
-
-    print("\n" + "="*110)
-    print(f"Total Open Ports: {len(open_services)} | Total Findings: {len(all_findings)} | Auto-Fixed: {fixed_count}")
-    if args.fix:
-        print("[+] Auto-remediation applied.")
-    print("[+] Aegis learning engine active. Run again to detect DRIFT.")
-    if args.slack:
-        print("[+] Slack alerts enabled.")
-    print("="*110)
-
+# ---------- STARTUP ----------
 if __name__ == "__main__":
-    main()
+    init_db()
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
