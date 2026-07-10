@@ -130,7 +130,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-# ---- OTP Storage (in-memory for simplicity) ----
+# ---- OTP Storage (in-memory) ----
 pending_users = {}
 
 def generate_otp():
@@ -140,10 +140,6 @@ def send_otp_email(email, otp):
     # In production, use SMTP or SendGrid. For now, print to console/log.
     print(f"[OTP] Your verification code for Aegis is: {otp}")
     print(f"[OTP] Sent to: {email}")
-    # You can uncomment the real SMTP code later:
-    # import smtplib
-    # from email.mime.text import MIMEText
-    # ...
     return True
 
 def ensure_db_tables():
@@ -1409,6 +1405,7 @@ OTP_HTML = """
         <div class="error">{{ error }}</div>
         {% endif %}
         <form method="POST" action="/verify-otp">
+            <input type="hidden" name="email" value="{{ email }}">
             <input type="text" name="otp" placeholder="6‑digit code" maxlength="6" required autofocus>
             <button type="submit">Verify Account</button>
         </form>
@@ -2079,17 +2076,13 @@ if FLASK_AVAILABLE:
             if user and check_password_hash(user[2], password):
                 session['user_id'] = user[0]
                 session['email'] = user[1]
-                session['company'] = user[3]  # company as business name
+                session['company'] = user[3]
                 session['first_name'] = user[4]
                 session['last_name'] = user[5]
                 return redirect('/dashboard')
             else:
                 return render_template_string(LOGIN_HTML, error="Invalid email or password")
         return render_template_string(LOGIN_HTML, error=None)
-
-    # ── BUSINESS EMAIL VALIDATION REMOVED ──
-    # Now any email works. We keep the list commented for later use.
-    # FREE_DOMAINS = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 'mail.com', 'protonmail.com', 'icloud.com']
 
     @app.route('/signup', methods=['GET', 'POST'])
     def signup():
@@ -2098,7 +2091,6 @@ if FLASK_AVAILABLE:
             last_name = request.form['last_name']
             email = request.form['email']
             password = generate_password_hash(request.form['password'])
-            # No domain check – accept any email
             try:
                 conn = sqlite3.connect(DB_NAME)
                 c = conn.cursor()
@@ -2118,13 +2110,65 @@ if FLASK_AVAILABLE:
 
     @app.route('/verify-otp', methods=['POST'])
     def verify_otp():
-        email = request.form.get('email', '')
-        otp = request.form.get('otp', '')
-        # We'll keep it simple: we can pass email via hidden input in OTP_HTML.
-        # We'll just handle it quickly here.
-        # For now, we'll try to get email from session or fallback.
-        # This is a placeholder; we'll implement fully later.
-        return render_template_string(OTP_HTML, email="user@example.com", otp="123456", error="OTP verification not fully implemented yet. Check console for OTP.")
+        email = request.form.get('email')
+        otp = request.form.get('otp')
+
+        if not email or not otp:
+            return render_template_string(OTP_HTML, email=email, otp="", error="Missing email or OTP.")
+
+        # Check if email exists in pending_users
+        if email not in pending_users:
+            return render_template_string(OTP_HTML, email=email, otp="", error="OTP expired or not found. Please sign up again.")
+
+        stored_data = pending_users[email]
+        stored_otp = stored_data['otp']
+        timestamp = stored_data['timestamp']
+
+        # Check if OTP is expired (5 minutes)
+        if (datetime.datetime.now() - timestamp).seconds > 300:
+            del pending_users[email]
+            return render_template_string(OTP_HTML, email=email, otp="", error="OTP expired. Please request a new one.")
+
+        if otp != stored_otp:
+            return render_template_string(OTP_HTML, email=email, otp="", error="Invalid OTP. Please try again.")
+
+        # OTP is correct – verify user in database
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("UPDATE users SET verified = 1 WHERE email = ?", (email,))
+        conn.commit()
+        conn.close()
+
+        # Remove from pending
+        del pending_users[email]
+
+        # Log the user in
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE email = ?", (email,))
+        user = c.fetchone()
+        conn.close()
+
+        if user:
+            session['user_id'] = user[0]
+            session['email'] = user[1]
+            session['company'] = user[3]
+            session['first_name'] = user[4]
+            session['last_name'] = user[5]
+            return redirect('/dashboard')
+
+        return redirect('/login')
+
+    @app.route('/resend-otp')
+    def resend_otp():
+        email = request.args.get('email')
+        if not email or email not in pending_users:
+            return "Email not found. Please sign up again."
+        otp = generate_otp()
+        pending_users[email]['otp'] = otp
+        pending_users[email]['timestamp'] = datetime.datetime.now()
+        send_otp_email(email, otp)
+        return render_template_string(OTP_HTML, email=email, otp=otp, error="New OTP sent. Check console.")
 
     @app.route('/logout')
     def logout():
