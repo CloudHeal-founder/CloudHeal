@@ -1297,7 +1297,7 @@ def run_fix_chain(args):
             print(f"[!] Unknown cloud: {cloud}")
     print("[*] Multi-cloud scanning complete.")
 
-# ---------- HTML TEMPLATES (PREMIUM BACKGROUNDS) ----------
+# ---------- HTML TEMPLATES (with left‑side eye icon) ----------
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html>
@@ -1315,6 +1315,22 @@ LOGIN_HTML = """
         .login-box .link a { color: #00d4ff; text-decoration: none; }
         .login-box .forgot { text-align: right; font-size: 12px; margin-top: -10px; margin-bottom: 15px; }
         .login-box .forgot a { color: #5a6a7a; }
+
+        /* ---- Eye on the LEFT ---- */
+        .password-wrapper { position: relative; }
+        .password-wrapper input { padding-left: 40px; }
+        .toggle-password {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #8ba0b8;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 0;
+        }
     </style>
 </head>
 <body>
@@ -1325,7 +1341,10 @@ LOGIN_HTML = """
         {% endif %}
         <form method="POST" action="/login">
             <input type="email" name="email" placeholder="Email" required>
-            <input type="password" name="password" placeholder="Password" required>
+            <div class="password-wrapper">
+                <input type="password" name="password" id="loginPassword" placeholder="Password" required>
+                <button type="button" class="toggle-password" onclick="togglePassword('loginPassword', this)">👁️</button>
+            </div>
             <div class="forgot"><a href="#">Forgot password?</a></div>
             <button type="submit">Login</button>
         </form>
@@ -1333,6 +1352,18 @@ LOGIN_HTML = """
             Don't have an account? <a href="/signup">Sign up</a>
         </div>
     </div>
+    <script>
+        function togglePassword(id, btn) {
+            const input = document.getElementById(id);
+            if (input.type === "password") {
+                input.type = "text";
+                btn.textContent = "🙈";
+            } else {
+                input.type = "password";
+                btn.textContent = "👁️";
+            }
+        }
+    </script>
 </body>
 </html>
 """
@@ -1354,6 +1385,22 @@ SIGNUP_HTML = """
         .signup-box .link a { color: #00d4ff; text-decoration: none; }
         .name-row { display: flex; gap: 10px; }
         .name-row input { flex: 1; }
+
+        /* ---- Eye on the LEFT ---- */
+        .password-wrapper { position: relative; }
+        .password-wrapper input { padding-left: 40px; }
+        .toggle-password {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #8ba0b8;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 0;
+        }
     </style>
 </head>
 <body>
@@ -1369,13 +1416,28 @@ SIGNUP_HTML = """
                 <input type="text" name="last_name" placeholder="Last Name" required>
             </div>
             <input type="email" name="email" placeholder="Email" required>
-            <input type="password" name="password" placeholder="Password" required>
+            <div class="password-wrapper">
+                <input type="password" name="password" id="signupPassword" placeholder="Password" required>
+                <button type="button" class="toggle-password" onclick="togglePassword('signupPassword', this)">👁️</button>
+            </div>
             <button type="submit">Sign Up</button>
         </form>
         <div class="link">
             Already have an account? <a href="/login">Login</a>
         </div>
     </div>
+    <script>
+        function togglePassword(id, btn) {
+            const input = document.getElementById(id);
+            if (input.type === "password") {
+                input.type = "text";
+                btn.textContent = "🙈";
+            } else {
+                input.type = "password";
+                btn.textContent = "👁️";
+            }
+        }
+    </script>
 </body>
 </html>
 """
@@ -2079,7 +2141,7 @@ if FLASK_AVAILABLE:
             if user and check_password_hash(user[2], password):
                 session['user_id'] = user[0]
                 session['email'] = user[1]
-                session['company'] = user[3]  # company can be used as business name
+                session['company'] = user[3]  # company as business name
                 session['first_name'] = user[4]
                 session['last_name'] = user[5]
                 return redirect('/dashboard')
@@ -2106,7 +2168,7 @@ if FLASK_AVAILABLE:
                           (email, password, email.split('@')[0], first_name, last_name))
                 conn.commit()
                 conn.close()
-                # Generate OTP and store in pending_users
+                # Generate OTP and store
                 otp = generate_otp()
                 pending_users[email] = {'otp': otp, 'timestamp': datetime.datetime.now()}
                 send_otp_email(email, otp)
@@ -2120,15 +2182,11 @@ if FLASK_AVAILABLE:
     def verify_otp():
         email = request.form.get('email', '')
         otp = request.form.get('otp', '')
-        # We need to store email in session or hidden field; for simplicity, use email from pending_users.
-        # Since we don't have email in form, we can pass it via session or hidden input.
-        # Quick fix: we'll store email in session during signup.
-        # Let's adjust: in signup, set session['pending_email'] = email before redirect.
-        # We'll add that now.
-        return "Verify OTP logic – we'll fix in next iteration."
-
-    # For now, we'll redirect to dashboard after signup without OTP verification (to keep it simple).
-    # But we already have OTP_HTML – we can implement it later.
+        # We'll keep it simple: we can pass email via hidden input in OTP_HTML.
+        # We'll just handle it quickly here.
+        # For now, we'll try to get email from session or fallback.
+        # This is a placeholder; we'll implement fully later.
+        return render_template_string(OTP_HTML, email="user@example.com", otp="123456", error="OTP verification not fully implemented yet. Check console for OTP.")
 
     @app.route('/logout')
     def logout():
