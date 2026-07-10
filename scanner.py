@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Aegis (APCSS) – Automated Protection of Cloud Security Systems
-With Human-in-the-Loop + AI Support + Enhanced Web Scanning
+Full SaaS with Landing Page, Pricing, OTP, AI Assistant, and Premium UI
 Built by Austin Emmanuel – 19‑year‑old founder from Nigeria
 """
 import socket
@@ -18,9 +18,17 @@ import threading
 import webbrowser
 import requests
 import urllib3
+import subprocess
+import time
+import random
+import string
 from typing import Dict, List, Tuple, Optional
 from urllib.request import urlopen, Request
 from urllib.error import URLError
+
+# ----- FLASK AUTHENTICATION IMPORTS -----
+from flask import Flask, render_template_string, jsonify, request, redirect, url_for, session
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -109,8 +117,37 @@ def init_db():
         timestamp TEXT, cloud TEXT, account TEXT,
         message TEXT, severity TEXT, fixed INTEGER
     )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE,
+        password TEXT,
+        company TEXT,
+        first_name TEXT,
+        last_name TEXT,
+        created_at TEXT,
+        verified INTEGER DEFAULT 0
+    )''')
     conn.commit()
     conn.close()
+
+# ---- OTP Storage (in-memory) ----
+pending_users = {}
+
+def generate_otp():
+    return ''.join(random.choices(string.digits, k=6))
+
+def send_otp_email(email, otp):
+    # In production, use SMTP or SendGrid. For now, print to console/log.
+    print(f"[OTP] Your verification code for Aegis is: {otp}")
+    print(f"[OTP] Sent to: {email}")
+    return True
+
+def ensure_db_tables():
+    try:
+        init_db()
+        print("[+] Database tables verified/created.")
+    except Exception as e:
+        print(f"[!] Error creating database tables: {e}")
 
 def save_scan(target, cloud, account, open_services, findings):
     conn = sqlite3.connect(DB_NAME)
@@ -176,7 +213,6 @@ def send_slack_alert(message, severity="INFO", webhook_url=None, cloud="unknown"
 
 # ---------- AI QUERY FUNCTION ----------
 def ai_query(question, context=""):
-    """Ask AI about your cloud security"""
     if not OLLAMA_AVAILABLE and not OPENAI_AVAILABLE:
         return "AI not available. Install ollama or openai."
 
@@ -463,11 +499,7 @@ def scan_host(host, ports, threads=50):
 
 # ---------- ENHANCED WEB SCANNING ----------
 def discover_directories(target_url, wordlist=None):
-    """
-    Brute‑force common directories on a web target.
-    """
     if not wordlist:
-        # Extended wordlist (500+ common directories)
         wordlist = [
             "admin", "admin.php", "administrator", "login", "login.php", "wp-admin",
             "backup", "backups", "temp", "tmp", "test", "dev", "staging",
@@ -519,9 +551,6 @@ def discover_directories(target_url, wordlist=None):
     return findings
 
 def test_sqli(target_url, params=None, payloads=None):
-    """
-    Basic SQL injection testing on URL parameters.
-    """
     if not params:
         params = ["id", "page", "user", "query", "q", "search", "cat", "product", "artid", "album", "track", "category"]
     if not payloads:
@@ -544,11 +573,8 @@ def test_sqli(target_url, params=None, payloads=None):
             "1' OR '1'='2"
         ]
     findings = []
-    # If target_url already has query parameters, we need to parse them
     if '?' in target_url:
         base, query_string = target_url.split('?', 1)
-        # If user provided parameters, we use them; otherwise we use the existing ones
-        # Actually we want to test each parameter individually
         existing_params = []
         for pair in query_string.split('&'):
             if '=' in pair:
@@ -574,9 +600,6 @@ def test_sqli(target_url, params=None, payloads=None):
     return findings
 
 def test_xss(target_url, params=None, payloads=None):
-    """
-    Basic XSS testing on URL parameters.
-    """
     if not params:
         params = ["q", "search", "query", "input", "name", "id", "page", "cat", "product"]
     if not payloads:
@@ -620,9 +643,6 @@ def test_xss(target_url, params=None, payloads=None):
     return findings
 
 def lookup_cve(service, version=None):
-    """
-    Query NVD API for known CVEs.
-    """
     query = service
     if version:
         query += f" {version}"
@@ -642,9 +662,6 @@ def lookup_cve(service, version=None):
     return None
 
 def calculate_risk_score(findings):
-    """
-    Calculate overall risk score (0-100).
-    """
     weights = {"CRITICAL": 10, "HIGH": 7, "MEDIUM": 4, "LOW": 1, "INFO": 0}
     total_weight = sum(weights.get(f[3] if isinstance(f, tuple) else f.get('risk', 'INFO'), 0) for f in findings)
     max_possible = len(findings) * 10
@@ -1276,7 +1293,418 @@ def run_fix_chain(args):
             print(f"[!] Unknown cloud: {cloud}")
     print("[*] Multi-cloud scanning complete.")
 
-# ---------- DASHBOARD ----------
+# ---------- HTML TEMPLATES ----------
+LOGIN_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Aegis – Login</title>
+    <style>
+        body { background: radial-gradient(ellipse at 50% 50%, #0d1b2a 0%, #050a12 100%); color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-box { background: rgba(17, 27, 38, 0.8); backdrop-filter: blur(10px); padding: 40px; border-radius: 12px; border: 1px solid #1e2a3a; width: 350px; }
+        .login-box h1 { text-align: center; color: #00d4ff; margin-bottom: 30px; }
+        .login-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
+        .login-box button { width: 100%; padding: 12px; background: #00d4ff; color: #0a0e17; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
+        .login-box button:hover { background: #7b2ffc; color: #fff; }
+        .login-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
+        .login-box .link { text-align: center; margin-top: 15px; color: #8ba0b8; font-size: 14px; }
+        .login-box .link a { color: #00d4ff; text-decoration: none; }
+        .login-box .forgot { text-align: right; font-size: 12px; margin-top: -10px; margin-bottom: 15px; }
+        .login-box .forgot a { color: #5a6a7a; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h1>🛡️ Aegis</h1>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST" action="/login">
+            <input type="email" name="email" placeholder="Email" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <div class="forgot"><a href="#">Forgot password?</a></div>
+            <button type="submit">Login</button>
+        </form>
+        <div class="link">
+            Don't have an account? <a href="/signup">Sign up</a>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+SIGNUP_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Aegis – Sign Up</title>
+    <style>
+        body { background: radial-gradient(ellipse at 50% 50%, #0d1b2a 0%, #050a12 100%); color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .signup-box { background: rgba(17, 27, 38, 0.8); backdrop-filter: blur(10px); padding: 40px; border-radius: 12px; border: 1px solid #1e2a3a; width: 360px; }
+        .signup-box h1 { text-align: center; color: #00d4ff; margin-bottom: 30px; }
+        .signup-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
+        .signup-box button { width: 100%; padding: 12px; background: #00d4ff; color: #0a0e17; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
+        .signup-box button:hover { background: #7b2ffc; color: #fff; }
+        .signup-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
+        .signup-box .link { text-align: center; margin-top: 15px; color: #8ba0b8; font-size: 14px; }
+        .signup-box .link a { color: #00d4ff; text-decoration: none; }
+        .name-row { display: flex; gap: 10px; }
+        .name-row input { flex: 1; }
+    </style>
+</head>
+<body>
+    <div class="signup-box">
+        <h1>🛡️ Aegis</h1>
+        <h3 style="text-align:center; color:#8ba0b8; margin-top:-10px;">Create Account</h3>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST" action="/signup">
+            <div class="name-row">
+                <input type="text" name="first_name" placeholder="First Name" required>
+                <input type="text" name="last_name" placeholder="Last Name" required>
+            </div>
+            <input type="email" name="email" placeholder="Email" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">Sign Up</button>
+        </form>
+        <div class="link">
+            Already have an account? <a href="/login">Login</a>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+OTP_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Aegis – Verify Email</title>
+    <style>
+        body { background: radial-gradient(ellipse at 50% 50%, #0d1b2a 0%, #050a12 100%); color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .otp-box { background: rgba(17, 27, 38, 0.8); backdrop-filter: blur(10px); padding: 40px; border-radius: 12px; border: 1px solid #1e2a3a; width: 350px; }
+        .otp-box h1 { text-align: center; color: #00d4ff; margin-bottom: 30px; }
+        .otp-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; text-align: center; font-size: 24px; letter-spacing: 8px; }
+        .otp-box button { width: 100%; padding: 12px; background: #00d4ff; color: #0a0e17; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
+        .otp-box button:hover { background: #7b2ffc; color: #fff; }
+        .otp-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
+        .otp-box .info { color: #8ba0b8; text-align: center; margin-bottom: 20px; font-size: 14px; }
+        .otp-box .otp-display { background: #0a0e17; border: 1px solid #2ed573; border-radius: 8px; padding: 12px; text-align: center; margin-bottom: 20px; color: #2ed573; font-size: 28px; letter-spacing: 6px; font-weight: bold; }
+        .otp-box .resend { text-align: center; margin-top: 15px; color: #8ba0b8; font-size: 14px; }
+        .otp-box .resend a { color: #00d4ff; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="otp-box">
+        <h1>📧 Verify Email</h1>
+        <div class="info">We sent a 6‑digit code to <strong>{{ email }}</strong>.</div>
+        <div class="otp-display">🔑 {{ otp }}</div>
+        <div class="info" style="font-size:12px; color:#5a6a7a;">(Copy this code and paste it below)</div>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST" action="/verify-otp">
+            <input type="hidden" name="email" value="{{ email }}">
+            <input type="text" name="otp" placeholder="6‑digit code" maxlength="6" required autofocus>
+            <button type="submit">Verify Account</button>
+        </form>
+        <div class="resend">
+            Didn't get the code? <a href="/resend-otp?email={{ email }}">Resend OTP</a>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+LANDING_PAGE_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aegis – Self‑Healing Cloud Security</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        body { background: #050a12; color: #e0e6ed; overflow-x: hidden; }
+        a { text-decoration: none; color: inherit; }
+
+        .bg-animation { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; overflow: hidden; background: radial-gradient(ellipse at 20% 50%, #0d1b2a 0%, #050a12 100%); }
+        .bg-animation .glow { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.3; }
+        .bg-animation .glow:nth-child(1) { width: 600px; height: 600px; top: -200px; left: -200px; background: #00d4ff; animation: float 25s infinite; }
+        .bg-animation .glow:nth-child(2) { width: 500px; height: 500px; bottom: -200px; right: -200px; background: #7b2ffc; animation: float 30s infinite reverse; }
+        @keyframes float { 0% { transform: translate(0,0) scale(1); } 50% { transform: translate(40px, -40px) scale(1.1); } 100% { transform: translate(-20px, 20px) scale(1); } }
+
+        .container { max-width: 1400px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1; }
+        nav { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; flex-wrap: wrap; }
+        .logo { font-size: 28px; font-weight: 700; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .nav-links { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+        .nav-links a { color: #8ba0b8; font-size: 14px; transition: 0.2s; }
+        .nav-links a:hover { color: #e0e6ed; }
+        .nav-cta { background: #00d4ff; color: #0a0e17 !important; padding: 8px 20px; border-radius: 30px; font-weight: 600; }
+        .nav-cta:hover { background: #7b2ffc; color: #fff !important; }
+
+        .hero { display: flex; align-items: center; justify-content: space-between; padding: 60px 0; gap: 60px; min-height: 70vh; }
+        .hero-content { flex: 1; }
+        .hero-content h1 { font-size: 52px; font-weight: 700; line-height: 1.1; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 20px; }
+        .hero-content p { font-size: 20px; color: #8ba0b8; max-width: 550px; margin-bottom: 30px; line-height: 1.6; }
+        .hero-buttons { display: flex; gap: 15px; flex-wrap: wrap; }
+        .btn-primary { background: #00d4ff; color: #0a0e17; padding: 14px 32px; border-radius: 30px; font-weight: 700; border: none; cursor: pointer; font-size: 16px; transition: 0.2s; display: inline-block; }
+        .btn-primary:hover { background: #7b2ffc; color: #fff; }
+        .btn-secondary { background: transparent; border: 1px solid #1e2a3a; color: #e0e6ed; padding: 14px 32px; border-radius: 30px; font-weight: 600; cursor: pointer; transition: 0.2s; display: inline-block; }
+        .btn-secondary:hover { border-color: #00d4ff; color: #00d4ff; }
+        .hero-image { flex: 1; background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 16px; padding: 40px; border: 1px solid #1e2a3a; text-align: center; min-height: 300px; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+        .hero-image .placeholder-icon { font-size: 80px; margin-bottom: 20px; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+        .hero-image p { color: #8ba0b8; font-size: 16px; }
+
+        .trust-bar { padding: 30px 0; border-top: 1px solid #1e2a3a; border-bottom: 1px solid #1e2a3a; text-align: center; margin: 20px 0; }
+        .trust-bar p { color: #5a6a7a; font-size: 14px; letter-spacing: 1px; margin-bottom: 15px; }
+        .trust-logos { display: flex; justify-content: center; flex-wrap: wrap; gap: 40px; }
+        .trust-logos span { color: #8ba0b8; font-size: 18px; font-weight: 500; opacity: 0.7; transition: 0.2s; }
+        .trust-logos span:hover { opacity: 1; }
+
+        .features { padding: 80px 0; }
+        .features h2 { text-align: center; font-size: 36px; margin-bottom: 50px; }
+        .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; }
+        .feature-card { background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 12px; padding: 30px; border: 1px solid #1e2a3a; transition: 0.3s; }
+        .feature-card:hover { border-color: #00d4ff; transform: translateY(-5px); }
+        .feature-card .icon { font-size: 40px; margin-bottom: 15px; }
+        .feature-card h3 { font-size: 20px; margin-bottom: 10px; }
+        .feature-card p { color: #8ba0b8; font-size: 14px; line-height: 1.6; }
+
+        .pricing { padding: 80px 0; }
+        .pricing h2 { text-align: center; font-size: 36px; margin-bottom: 20px; }
+        .pricing .sub { text-align: center; color: #8ba0b8; margin-bottom: 50px; font-size: 18px; }
+        .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; }
+        .pricing-card { background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 12px; padding: 30px; border: 1px solid #1e2a3a; transition: 0.3s; text-align: center; }
+        .pricing-card:hover { border-color: #00d4ff; transform: translateY(-5px); }
+        .pricing-card.popular { border-color: #00d4ff; }
+        .pricing-card .plan { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
+        .pricing-card .price { font-size: 36px; font-weight: 700; color: #00d4ff; margin-bottom: 20px; }
+        .pricing-card .price span { font-size: 16px; color: #8ba0b8; }
+        .pricing-card ul { list-style: none; text-align: left; padding: 0; margin: 20px 0; }
+        .pricing-card ul li { padding: 8px 0; border-bottom: 1px solid #1e2a3a; color: #8ba0b8; font-size: 14px; }
+        .pricing-card ul li:before { content: "✅ "; color: #2ed573; }
+        .pricing-card .btn { background: #00d4ff; color: #0a0e17; padding: 10px 30px; border-radius: 30px; font-weight: 600; display: inline-block; transition: 0.2s; }
+        .pricing-card .btn:hover { background: #7b2ffc; color: #fff; }
+
+        .cta-section { padding: 80px 0; text-align: center; background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 16px; border: 1px solid #1e2a3a; margin: 40px 0; }
+        .cta-section h2 { font-size: 36px; margin-bottom: 15px; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .cta-section p { color: #8ba0b8; font-size: 18px; margin-bottom: 30px; }
+
+        footer { padding: 30px 0; border-top: 1px solid #1e2a3a; text-align: center; color: #5a6a7a; font-size: 14px; }
+        footer a { color: #8ba0b8; margin: 0 15px; }
+        footer a:hover { color: #e0e6ed; }
+
+        @media (max-width: 768px) {
+            .hero { flex-direction: column; text-align: center; padding: 40px 0; }
+            .hero-content h1 { font-size: 36px; }
+            .hero-content p { margin: 0 auto 30px; }
+            .hero-buttons { justify-content: center; }
+            .hero-image { min-height: 200px; }
+            .features { padding: 40px 0; }
+            .pricing { padding: 40px 0; }
+            .trust-logos { gap: 20px; }
+            .trust-logos span { font-size: 14px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-animation">
+        <div class="glow"></div>
+        <div class="glow"></div>
+    </div>
+    <div class="container">
+        <nav>
+            <div class="logo">🛡️ Aegis</div>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#pricing">Pricing</a>
+                <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank">GitHub</a>
+                <a href="/login" class="nav-cta">Login</a>
+            </div>
+        </nav>
+        <section class="hero">
+            <div class="hero-content">
+                <h1>Self‑Healing Cloud Security</h1>
+                <p>
+                    Aegis is the first open‑source, four‑cloud security platform that
+                    <strong>automatically detects and fixes</strong> attack chains across
+                    AWS, GCP, Azure, and OCI.
+                </p>
+                <div class="hero-buttons">
+                    <a href="/signup" class="btn-primary">Get Started Free →</a>
+                    <a href="#features" class="btn-secondary">Learn More</a>
+                </div>
+            </div>
+            <div class="hero-image">
+                <div class="placeholder-icon">🛡️</div>
+                <p>Live dashboard • Attack path graphs • Auto‑fix</p>
+                <p style="font-size: 13px; color: #5a6a7a; margin-top: 10px;">⬇️ 4 clouds, 1 command</p>
+            </div>
+        </section>
+        <div class="trust-bar">
+            <p>TRUSTED BY TEAMS BUILDING THE FUTURE</p>
+            <div class="trust-logos">
+                <span>🏢 Startups</span>
+                <span>🔒 Enterprises</span>
+                <span>☁️ Cloud‑Native</span>
+                <span>🧠 AI‑Driven</span>
+                <span>🌍 Global</span>
+            </div>
+        </div>
+        <section class="features" id="features">
+            <h2>Why Aegis?</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">☁️</div>
+                    <h3>Four‑Cloud Coverage</h3>
+                    <p>Scan AWS, GCP, Azure, and OCI in one command – no other open‑source tool does this.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔗</div>
+                    <h3>Attack Path Graphs</h3>
+                    <p>See exactly how an attacker would move from the internet to your sensitive data.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🛡️</div>
+                    <h3>Auto‑Fix the Chain</h3>
+                    <p>Not just alerts – Aegis breaks the entire attack path by fixing S3, SGs, EC2, and IAM.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">📊</div>
+                    <h3>Live Dashboard</h3>
+                    <p>Real‑time monitoring with alerts, scan history, and attack path visualisation.</p>
+                </div>
+            </div>
+        </section>
+        <section class="pricing" id="pricing">
+            <h2>Simple, Transparent Pricing</h2>
+            <p class="sub">Start free, scale as you grow.</p>
+            <div class="pricing-grid">
+                <div class="pricing-card">
+                    <div class="plan">Free</div>
+                    <div class="price">$0</div>
+                    <ul>
+                        <li>1 cloud account</li>
+                        <li>Manual scans</li>
+                        <li>Community support</li>
+                        <li>Basic dashboard</li>
+                    </ul>
+                    <a href="/signup" class="btn">Get Started</a>
+                </div>
+                <div class="pricing-card popular">
+                    <div class="plan">Pro</div>
+                    <div class="price">$500 <span>/ month</span></div>
+                    <ul>
+                        <li>10 cloud accounts</li>
+                        <li>Auto‑fix</li>
+                        <li>Slack alerts</li>
+                        <li>Priority support</li>
+                        <li>1‑year history</li>
+                    </ul>
+                    <a href="/signup" class="btn">Start Trial</a>
+                </div>
+                <div class="pricing-card">
+                    <div class="plan">Enterprise</div>
+                    <div class="price">Custom</div>
+                    <ul>
+                        <li>Unlimited accounts</li>
+                        <li>24/7 support</li>
+                        <li>Dedicated deployment</li>
+                        <li>Custom compliance</li>
+                        <li>SSO & RBAC</li>
+                    </ul>
+                    <a href="/signup" class="btn">Contact Sales</a>
+                </div>
+            </div>
+        </section>
+        <section class="cta-section">
+            <h2>Ready to secure your cloud?</h2>
+            <p>Join the future of open‑source, self‑healing cloud security.</p>
+            <a href="/signup" class="btn-primary">Get Started – It’s Free</a>
+        </section>
+        <footer>
+            <p>
+                <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank">GitHub</a>
+                <a href="/login">Login</a>
+                <a href="/pricing">Pricing</a>
+                <a href="#">Privacy</a>
+            </p>
+            <p style="margin-top: 10px; font-size: 12px;">© 2026 Aegis – Built by Austin Emmanuel</p>
+        </footer>
+    </div>
+</body>
+</html>
+"""
+
+PRICING_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Aegis – Pricing</title>
+    <style>
+        body { background: radial-gradient(ellipse at 50% 50%, #0d1b2a 0%, #050a12 100%); color: #e0e6ed; font-family: Arial, sans-serif; padding: 40px; text-align: center; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        h1 { font-size: 42px; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; margin-top: 40px; }
+        .card { background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 12px; padding: 30px; border: 1px solid #1e2a3a; }
+        .card.popular { border-color: #00d4ff; }
+        .card .plan { font-size: 24px; font-weight: 700; }
+        .card .price { font-size: 36px; color: #00d4ff; margin: 15px 0; }
+        .card ul { list-style: none; padding: 0; text-align: left; }
+        .card ul li { padding: 8px 0; border-bottom: 1px solid #1e2a3a; color: #8ba0b8; }
+        .card ul li:before { content: "✅ "; color: #2ed573; }
+        .btn { display: inline-block; background: #00d4ff; color: #0a0e17; padding: 10px 30px; border-radius: 30px; font-weight: 600; margin-top: 20px; text-decoration: none; }
+        .btn:hover { background: #7b2ffc; color: #fff; }
+        @media (max-width: 768px) { .pricing-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Choose Your Plan</h1>
+        <p style="color:#8ba0b8;">Start free. Scale with confidence.</p>
+        <div class="pricing-grid">
+            <div class="card">
+                <div class="plan">Free</div>
+                <div class="price">$0</div>
+                <ul>
+                    <li>1 cloud account</li>
+                    <li>Manual scans</li>
+                    <li>Community support</li>
+                </ul>
+                <a href="/signup" class="btn">Get Started</a>
+            </div>
+            <div class="card popular">
+                <div class="plan">Pro</div>
+                <div class="price">$500 <span style="font-size:16px;color:#8ba0b8;">/ mo</span></div>
+                <ul>
+                    <li>10 cloud accounts</li>
+                    <li>Auto‑fix</li>
+                    <li>Slack alerts</li>
+                    <li>Priority support</li>
+                </ul>
+                <a href="/signup" class="btn">Start Trial</a>
+            </div>
+            <div class="card">
+                <div class="plan">Enterprise</div>
+                <div class="price">Custom</div>
+                <ul>
+                    <li>Unlimited accounts</li>
+                    <li>24/7 support</li>
+                    <li>Dedicated deployment</li>
+                </ul>
+                <a href="/signup" class="btn">Contact Sales</a>
+            </div>
+        </div>
+        <p style="margin-top:40px;"><a href="/" style="color:#00d4ff;">← Back to home</a></p>
+    </div>
+</body>
+</html>
+"""
+
+# ---------- DASHBOARD HTML ----------
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html>
@@ -1284,20 +1712,40 @@ DASHBOARD_HTML = """
     <title>Aegis Security Dashboard</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-        body { background: #0a0e17; color: #e0e6ed; padding: 20px; }
-        .container { max-width: 1400px; margin: 0 auto; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 1px solid #1e2a3a; padding-bottom: 20px; }
-        .header h1 { font-size: 28px; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .header .badge { background: #1e2a3a; padding: 8px 16px; border-radius: 20px; font-size: 12px; color: #8ba0b8; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: #111b26; border-radius: 12px; padding: 20px; border: 1px solid #1e2a3a; }
-        .stat-card .number { font-size: 32px; font-weight: bold; color: #00d4ff; }
-        .stat-card .label { font-size: 14px; color: #8ba0b8; margin-top: 5px; }
+        body { background: radial-gradient(ellipse at 50% 0%, #0d1b2a 0%, #050a12 100%); color: #e0e6ed; display: flex; height: 100vh; overflow: hidden; }
+        .sidebar { width: 220px; background: #0d1520; border-right: 1px solid #1e2a3a; padding: 20px 0; height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; }
+        .sidebar .logo { font-size: 22px; font-weight: 700; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; padding: 0 20px; margin-bottom: 30px; }
+        .sidebar .logo span { font-size: 12px; display: block; -webkit-text-fill-color: #5a6a7a; }
+        .sidebar a { display: block; padding: 12px 20px; color: #8ba0b8; text-decoration: none; font-size: 14px; border-left: 3px solid transparent; transition: all 0.2s; }
+        .sidebar a:hover, .sidebar a.active { background: #111b26; color: #e0e6ed; border-left-color: #00d4ff; }
+        .sidebar a .icon { margin-right: 10px; }
+        .sidebar .logout { margin-top: 40px; border-top: 1px solid #1e2a3a; padding-top: 20px; color: #ff4757; }
+        .sidebar .logout:hover { border-left-color: #ff4757; }
+        .main { margin-left: 220px; flex: 1; padding: 20px 30px; overflow-y: auto; height: 100vh; }
+        .topbar { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid #1e2a3a; margin-bottom: 25px; }
+        .topbar h1 { font-size: 24px; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .topbar .user { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
+        .topbar .user .email { color: #8ba0b8; font-size: 14px; }
+        .topbar .user .badge { background: #1e2a3a; padding: 6px 14px; border-radius: 20px; font-size: 12px; color: #8ba0b8; }
+        .topbar .user .last-updated { color: #5a6a7a; font-size: 12px; }
+        .scan-btn { background: #00d4ff; color: #0a0e17; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .scan-btn:hover { background: #7b2ffc; color: #fff; }
+        .scan-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 12px; padding: 20px; border: 1px solid #1e2a3a; transition: transform 0.2s; }
+        .stat-card:hover { transform: translateY(-3px); border-color: #00d4ff; }
+        .stat-card .number { font-size: 30px; font-weight: 700; color: #00d4ff; }
+        .stat-card .label { font-size: 14px; color: #8ba0b8; margin-top: 4px; display: flex; align-items: center; gap: 8px; }
         .stat-card.critical .number { color: #ff4757; }
         .stat-card.fixed .number { color: #2ed573; }
-        .section { background: #111b26; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #1e2a3a; }
+        .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 30px; }
+        .chart-box { background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 12px; padding: 20px; border: 1px solid #1e2a3a; }
+        .chart-box h3 { font-size: 16px; color: #8ba0b8; margin-bottom: 15px; }
+        .chart-box canvas { max-height: 200px; width: 100% !important; }
+        .section { background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #1e2a3a; }
         .section h2 { font-size: 18px; margin-bottom: 15px; color: #8ba0b8; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
         th { text-align: left; padding: 10px; color: #8ba0b8; border-bottom: 1px solid #1e2a3a; }
@@ -1308,38 +1756,84 @@ DASHBOARD_HTML = """
         .severity-info { color: #8ba0b8; }
         .fixed-true { color: #2ed573; }
         .fixed-false { color: #ffa502; }
-        .path-chain { font-family: monospace; font-size: 13px; background: #0a0e17; padding: 8px 12px; border-radius: 6px; display: inline-block; }
+        .path-chain { font-family: monospace; font-size: 13px; background: #0a0e17; padding: 6px 12px; border-radius: 6px; display: inline-block; }
+        .empty { color: #5a6a7a; font-style: italic; }
         .refresh-btn { background: #1e2a3a; border: none; color: #e0e6ed; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; }
         .refresh-btn:hover { background: #2a3a4a; }
-        .empty { color: #8ba0b8; font-style: italic; }
-        @media (max-width: 600px) { .stats { grid-template-columns: 1fr 1fr; } }
+        .scan-loading { display: inline-block; width: 16px; height: 16px; border: 2px solid #8ba0b8; border-top-color: #00d4ff; border-radius: 50%; animation: spin 0.8s linear infinite; margin-left: 10px; vertical-align: middle; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .ai-bubble { position: fixed; bottom: 30px; right: 30px; z-index: 999; }
+        .ai-bubble button { width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, #00d4ff, #7b2ffc); border: none; color: #fff; font-size: 30px; cursor: pointer; box-shadow: 0 0 30px rgba(0,212,255,0.3); transition: 0.3s; display: flex; align-items: center; justify-content: center; }
+        .ai-bubble button:hover { transform: scale(1.1); box-shadow: 0 0 40px rgba(0,212,255,0.5); }
+        .ai-chat { display: none; position: fixed; bottom: 100px; right: 30px; width: 380px; max-height: 500px; background: #111b26; border: 1px solid #1e2a3a; border-radius: 16px; overflow: hidden; z-index: 999; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.8); }
+        .ai-chat.open { display: flex; }
+        .ai-chat .header { padding: 15px 20px; background: #0d1520; border-bottom: 1px solid #1e2a3a; display: flex; justify-content: space-between; align-items: center; }
+        .ai-chat .header h3 { color: #00d4ff; font-size: 16px; }
+        .ai-chat .header .close { background: none; border: none; color: #8ba0b8; font-size: 20px; cursor: pointer; }
+        .ai-chat .messages { flex: 1; padding: 15px; overflow-y: auto; max-height: 300px; }
+        .ai-chat .messages .msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 10px; max-width: 80%; word-wrap: break-word; }
+        .ai-chat .messages .msg.user { background: #1e2a3a; color: #e0e6ed; align-self: flex-end; margin-left: auto; }
+        .ai-chat .messages .msg.ai { background: #0a0e17; border: 1px solid #1e2a3a; color: #8ba0b8; align-self: flex-start; }
+        .ai-chat .input-area { display: flex; padding: 10px; border-top: 1px solid #1e2a3a; background: #0d1520; }
+        .ai-chat .input-area input { flex: 1; padding: 10px; border: none; border-radius: 8px; background: #0a0e17; color: #e0e6ed; outline: none; }
+        .ai-chat .input-area button { margin-left: 10px; padding: 10px 16px; background: #00d4ff; color: #0a0e17; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .ai-chat .input-area button:hover { background: #7b2ffc; color: #fff; }
+
+        @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; } .chart-row { grid-template-columns: 1fr; } .stats { grid-template-columns: 1fr 1fr; } .ai-chat { width: 300px; right: 10px; bottom: 90px; } }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🛡️ Aegis Security Dashboard</h1>
-            <div>
-                <span class="badge">Auto-Remediation Active</span>
-                <button class="refresh-btn" onclick="location.reload()">⟳ Refresh</button>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="logo">🛡️ Aegis<span>Cloud Security</span></div>
+        <a href="#" class="active"><span class="icon">📊</span> Dashboard</a>
+        <a href="/pricing"><span class="icon">💰</span> Pricing</a>
+        <a href="#"><span class="icon">🔍</span> Scans</a>
+        <a href="#"><span class="icon">🔔</span> Alerts</a>
+        <a href="/logout" class="logout"><span class="icon">🚪</span> Logout</a>
+    </div>
+
+    <!-- Main -->
+    <div class="main">
+        <!-- Top Bar -->
+        <div class="topbar">
+            <h1>📊 Dashboard</h1>
+            <div class="user">
+                <span class="badge">{{ company }}</span>
+                <span class="email">{{ email }}</span>
+                <span class="last-updated" id="lastUpdated">Last updated: --</span>
+                <button class="scan-btn" id="scanBtn" onclick="startScan()">⚡ Scan Now</button>
+                <button class="refresh-btn" onclick="loadData()">⟳ Refresh</button>
+                <div id="scanSpinner" style="display:inline;"></div>
             </div>
         </div>
 
+        <!-- Stats -->
         <div class="stats" id="stats">
-            <div class="stat-card"><div class="number" id="totalScans">-</div><div class="label">Total Scans</div></div>
-            <div class="stat-card critical"><div class="number" id="criticalFindings">-</div><div class="label">Critical Findings</div></div>
-            <div class="stat-card fixed"><div class="number" id="fixedIssues">-</div><div class="label">Auto-Fixed</div></div>
-            <div class="stat-card"><div class="number" id="openPorts">-</div><div class="label">Open Ports</div></div>
+            <div class="stat-card"><div class="number" id="totalScans">-</div><div class="label">📋 Total Scans</div></div>
+            <div class="stat-card critical"><div class="number" id="criticalFindings">-</div><div class="label">🔥 Critical Findings</div></div>
+            <div class="stat-card fixed"><div class="number" id="fixedIssues">-</div><div class="label">✅ Auto-Fixed</div></div>
+            <div class="stat-card"><div class="number" id="openPorts">-</div><div class="label">🔌 Open Ports</div></div>
         </div>
 
+        <!-- Charts -->
+        <div class="chart-row">
+            <div class="chart-box"><h3>📈 Vulnerability Trend</h3><canvas id="trendChart"></canvas></div>
+            <div class="chart-box"><h3>📊 Severity Breakdown</h3><canvas id="severityChart"></canvas></div>
+        </div>
+
+        <!-- Recent Scans -->
         <div class="section">
-            <h2>📊 Recent Scans</h2>
+            <h2>📋 Recent Scans</h2>
             <table>
                 <thead><tr><th>Timestamp</th><th>Target</th><th>Open Ports</th><th>Findings</th></tr></thead>
                 <tbody id="scansTable"></tbody>
             </table>
         </div>
 
+        <!-- Alerts -->
         <div class="section">
             <h2>🔔 Alerts & Remediations</h2>
             <table>
@@ -1348,9 +1842,28 @@ DASHBOARD_HTML = """
             </table>
         </div>
 
+        <!-- Attack Paths -->
         <div class="section">
             <h2>🔥 Attack Paths</h2>
             <div id="attackPaths"></div>
+        </div>
+    </div>
+
+    <!-- AI Assistant -->
+    <div class="ai-bubble">
+        <button id="aiToggle" onclick="toggleAI()">🛡️</button>
+    </div>
+    <div class="ai-chat" id="aiChat">
+        <div class="header">
+            <h3>🤖 Aegis AI</h3>
+            <button class="close" onclick="toggleAI()">✕</button>
+        </div>
+        <div class="messages" id="aiMessages">
+            <div class="msg ai">👋 Hi! I'm your cloud security assistant. Ask me anything about your cloud security.</div>
+        </div>
+        <div class="input-area">
+            <input type="text" id="aiInput" placeholder="Ask a question..." onkeypress="if(event.key==='Enter') sendAI()">
+            <button onclick="sendAI()">Send</button>
         </div>
     </div>
 
@@ -1364,37 +1877,169 @@ DASHBOARD_HTML = """
                 document.getElementById('criticalFindings').textContent = data.critical_findings || 0;
                 document.getElementById('fixedIssues').textContent = data.fixed_issues || 0;
                 document.getElementById('openPorts').textContent = data.open_ports || 0;
+                document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
 
                 const scansTable = document.getElementById('scansTable');
-                scansTable.innerHTML = data.scans.map(s => `
-                    <tr><td>${s[0]}</td><td>${s[1]}</td><td>${s[2]}</td><td>${s[3]}</td></tr>
-                `).join('') || '<tr><td colspan="4" class="empty">No scans yet</td></tr>';
+                if (data.scans && data.scans.length > 0) {
+                    scansTable.innerHTML = data.scans.map(s => `
+                        <tr><td>${s[0]}</td><td>${s[1]}</td><td>${s[2]}</td><td>${s[3]}</td></tr>
+                    `).join('');
+                } else {
+                    scansTable.innerHTML = `<tr><td colspan="4" class="empty">No scans yet. Click "Scan Now" to start your first scan!</td></tr>`;
+                }
 
                 const alertsTable = document.getElementById('alertsTable');
-                alertsTable.innerHTML = data.alerts.map(a => `
-                    <tr>
-                        <td>${a[0]}</td>
-                        <td>${a[1]}</td>
-                        <td class="severity-${a[2].toLowerCase()}">${a[2]}</td>
-                        <td class="fixed-${a[3] ? 'true' : 'false'}">${a[3] ? '✅ Fixed' : '⚠️ Open'}</td>
-                    </tr>
-                `).join('') || '<tr><td colspan="4" class="empty">No alerts yet</td></tr>';
+                if (data.alerts && data.alerts.length > 0) {
+                    alertsTable.innerHTML = data.alerts.map(a => `
+                        <tr>
+                            <td>${a[0]}</td>
+                            <td>${a[1]}</td>
+                            <td class="severity-${a[2].toLowerCase()}">${a[2]}</td>
+                            <td class="fixed-${a[3] ? 'true' : 'false'}">${a[3] ? '✅ Fixed' : '⚠️ Open'}</td>
+                        </tr>
+                    `).join('');
+                } else {
+                    alertsTable.innerHTML = `<tr><td colspan="4" class="empty">No alerts yet.</td></tr>`;
+                }
 
                 const pathsDiv = document.getElementById('attackPaths');
                 if (data.attack_paths && data.attack_paths.length > 0) {
                     pathsDiv.innerHTML = data.attack_paths.map((path, i) => `
-                        <div style="margin-bottom: 10px; padding: 12px; background: #0a0e17; border-radius: 8px; border-left: 3px solid #ff4757;">
+                        <div style="margin-bottom: 8px; padding: 10px 14px; background: #0a0e17; border-radius: 8px; border-left: 3px solid #ff4757;">
                             <strong>Path ${i+1}:</strong>
                             <span class="path-chain">${path.join(' → ')}</span>
                         </div>
                     `).join('');
                 } else {
-                    pathsDiv.innerHTML = '<span class="empty">✅ No attack paths found. Your cloud is secure.</span>';
+                    pathsDiv.innerHTML = '<span class="empty">✅ No attack paths found.</span>';
                 }
+
+                // Charts
+                const ctx1 = document.getElementById('trendChart').getContext('2d');
+                const ctx2 = document.getElementById('severityChart').getContext('2d');
+
+                const sevCounts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0, INFO: 0 };
+                if (data.alerts) {
+                    data.alerts.forEach(a => { if (sevCounts[a[2]] !== undefined) sevCounts[a[2]]++; });
+                }
+
+                if (window.sevChart) window.sevChart.destroy();
+                if (window.trendChart) window.trendChart.destroy();
+
+                window.sevChart = new Chart(ctx2, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Critical', 'High', 'Medium', 'Low', 'Info'],
+                        datasets: [{
+                            data: [sevCounts.CRITICAL, sevCounts.HIGH, sevCounts.MEDIUM, sevCounts.LOW, sevCounts.INFO],
+                            backgroundColor: ['#ff4757', '#ffa502', '#eccc68', '#2ed573', '#8ba0b8'],
+                            borderColor: '#0a0e17',
+                            borderWidth: 3
+                        }]
+                    },
+                    options: { 
+                        responsive: true, 
+                        plugins: { legend: { labels: { color: '#e0e6ed' } } },
+                        animation: { animateRotate: true, duration: 1000 }
+                    }
+                });
+
+                let labels = data.scans.map(s => s[0].slice(0, 10)).reverse();
+                let counts = data.scans.map(s => s[3]).reverse();
+                if (labels.length === 0) { labels = ['No Data']; counts = [0]; }
+                window.trendChart = new Chart(ctx1, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Findings',
+                            data: counts,
+                            borderColor: '#00d4ff',
+                            backgroundColor: 'rgba(0,212,255,0.1)',
+                            fill: true,
+                            tension: 0.3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { labels: { color: '#e0e6ed' } } },
+                        scales: { x: { ticks: { color: '#8ba0b8' } }, y: { ticks: { color: '#8ba0b8' } } },
+                        animation: { duration: 800 }
+                    }
+                });
+
+                document.getElementById('scanBtn').disabled = false;
+                scanInProgress = false;
+                document.getElementById('scanSpinner').innerHTML = '';
+
             } catch (e) {
                 console.error('Error loading data:', e);
             }
         }
+
+        let scanInProgress = false;
+
+        async function startScan() {
+            if (scanInProgress) return;
+            scanInProgress = true;
+            document.getElementById('scanBtn').disabled = true;
+            document.getElementById('scanSpinner').innerHTML = '<div class="scan-loading"></div>';
+
+            try {
+                const res = await fetch('/scan', { method: 'POST' });
+                const result = await res.json();
+                if (result.status === 'ok') {
+                    alert('Scan completed successfully! Results will refresh.');
+                    loadData();
+                } else {
+                    alert('Scan failed: ' + (result.message || 'Unknown error'));
+                }
+            } catch (e) {
+                alert('Error starting scan: ' + e.message);
+            } finally {
+                document.getElementById('scanBtn').disabled = false;
+                document.getElementById('scanSpinner').innerHTML = '';
+                scanInProgress = false;
+            }
+        }
+
+        function toggleAI() {
+            const chat = document.getElementById('aiChat');
+            chat.classList.toggle('open');
+        }
+
+        async function sendAI() {
+            const input = document.getElementById('aiInput');
+            const msg = input.value.trim();
+            if (!msg) return;
+            input.value = '';
+            const messagesDiv = document.getElementById('aiMessages');
+            const userDiv = document.createElement('div');
+            userDiv.className = 'msg user';
+            userDiv.textContent = msg;
+            messagesDiv.appendChild(userDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'msg ai';
+            loadingDiv.textContent = 'Thinking...';
+            messagesDiv.appendChild(loadingDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            try {
+                const res = await fetch('/api/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question: msg })
+                });
+                const data = await res.json();
+                loadingDiv.textContent = data.response || 'Sorry, I could not answer that.';
+            } catch (e) {
+                loadingDiv.textContent = 'Error: Could not reach AI service.';
+            }
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
         loadData();
         setInterval(loadData, 30000);
     </script>
@@ -1402,13 +2047,158 @@ DASHBOARD_HTML = """
 </html>
 """
 
+# ---------- FLASK APP ----------
 if FLASK_AVAILABLE:
+    ensure_db_tables()
     app = Flask(__name__)
+    app.secret_key = os.urandom(24)
 
+    # ── Public Routes ──
     @app.route('/')
-    def dashboard():
-        return render_template_string(DASHBOARD_HTML)
+    def landing_page():
+        return render_template_string(LANDING_PAGE_HTML)
 
+    @app.route('/pricing')
+    def pricing():
+        return render_template_string(PRICING_HTML)
+
+    # ── Auth ──
+    @app.route('/login', methods=['GET', 'POST'])
+    def login():
+        if request.method == 'POST':
+            email = request.form['email']
+            password = request.form['password']
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+            c.execute("SELECT * FROM users WHERE email = ?", (email,))
+            user = c.fetchone()
+            conn.close()
+            if user and check_password_hash(user[2], password):
+                session['user_id'] = user[0]
+                session['email'] = user[1]
+                session['company'] = user[3]
+                session['first_name'] = user[4]
+                session['last_name'] = user[5]
+                return redirect('/dashboard')
+            else:
+                return render_template_string(LOGIN_HTML, error="Invalid email or password")
+        return render_template_string(LOGIN_HTML, error=None)
+
+    @app.route('/signup', methods=['GET', 'POST'])
+    def signup():
+        if request.method == 'POST':
+            first_name = request.form['first_name']
+            last_name = request.form['last_name']
+            email = request.form['email']
+            password = generate_password_hash(request.form['password'])
+            try:
+                conn = sqlite3.connect(DB_NAME)
+                c = conn.cursor()
+                c.execute("INSERT INTO users (email, password, company, first_name, last_name, created_at, verified) VALUES (?, ?, ?, ?, ?, datetime('now'), 0)",
+                          (email, password, email.split('@')[0], first_name, last_name))
+                conn.commit()
+                conn.close()
+                # Generate OTP and store
+                otp = generate_otp()
+                pending_users[email] = {'otp': otp, 'timestamp': datetime.datetime.now()}
+                send_otp_email(email, otp)
+                # Show OTP page
+                return render_template_string(OTP_HTML, email=email, otp=otp, error=None)
+            except sqlite3.IntegrityError:
+                return render_template_string(SIGNUP_HTML, error="Email already exists.")
+        return render_template_string(SIGNUP_HTML, error=None)
+
+    @app.route('/verify-otp', methods=['POST'])
+    def verify_otp():
+        email = request.form.get('email')
+        otp = request.form.get('otp')
+
+        if not email or not otp:
+            return render_template_string(OTP_HTML, email="", otp="", error="Missing email or OTP.")
+
+        # Check if email exists in pending_users
+        if email not in pending_users:
+            return render_template_string(OTP_HTML, email=email, otp="", error="OTP expired. Please request a new one.")
+
+        stored_data = pending_users[email]
+        stored_otp = stored_data['otp']
+        timestamp = stored_data['timestamp']
+
+        # Check if OTP is expired (5 minutes)
+        if (datetime.datetime.now() - timestamp).seconds > 300:
+            del pending_users[email]
+            return render_template_string(OTP_HTML, email=email, otp="", error="OTP expired. Please request a new one.")
+
+        if otp != stored_otp:
+            return render_template_string(OTP_HTML, email=email, otp="", error="Invalid OTP. Please try again.")
+
+        # OTP is correct – verify user in database
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("UPDATE users SET verified = 1 WHERE email = ?", (email,))
+        conn.commit()
+        conn.close()
+
+        # Remove from pending
+        del pending_users[email]
+
+        # Log the user in
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE email = ?", (email,))
+        user = c.fetchone()
+        conn.close()
+
+        if user:
+            session['user_id'] = user[0]
+            session['email'] = user[1]
+            session['company'] = user[3]
+            session['first_name'] = user[4]
+            session['last_name'] = user[5]
+            return redirect('/dashboard')
+
+        return redirect('/login')
+
+    @app.route('/resend-otp')
+    def resend_otp():
+        email = request.args.get('email')
+        if not email:
+            return "No email provided."
+
+        # Check if user exists in database
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE email = ?", (email,))
+        user = c.fetchone()
+        conn.close()
+
+        if not user:
+            return "Email not registered. Please sign up first."
+
+        # Generate new OTP
+        otp = generate_otp()
+        pending_users[email] = {'otp': otp, 'timestamp': datetime.datetime.now()}
+        send_otp_email(email, otp)
+
+        return render_template_string(OTP_HTML, email=email, otp=otp, error="New OTP sent. Check your email or console.")
+
+    @app.route('/logout')
+    def logout():
+        session.clear()
+        return redirect('/')
+
+    # ── Dashboard ──
+    @app.route('/dashboard')
+    def dashboard():
+        if not session.get('user_id'):
+            return redirect('/login')
+        return render_template_string(
+            DASHBOARD_HTML,
+            email=session.get('email', 'user@example.com'),
+            company=session.get('company', 'My Company')
+        )
+
+    # ── API ──
     @app.route('/api/data')
     def api_data():
         scans = get_scan_history()
@@ -1446,10 +2236,40 @@ if FLASK_AVAILABLE:
             'attack_paths': paths
         })
 
+    @app.route('/api/ask', methods=['POST'])
+    def ask_ai():
+        data = request.get_json()
+        question = data.get('question', '')
+        if not question:
+            return jsonify({'response': 'Please ask a question.'})
+        context = ""
+        try:
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+            c.execute('''SELECT findings FROM scans ORDER BY id DESC LIMIT 1''')
+            result = c.fetchone()
+            if result:
+                context = f"Last scan findings: {result[0][:500]}"
+            conn.close()
+        except:
+            pass
+        answer = ai_query(question, context)
+        return jsonify({'response': answer})
+
+    @app.route('/scan', methods=['POST'])
+    def trigger_scan():
+        try:
+            open_services = scan_host("example.com", [80,443])
+            findings = []
+            if open_services:
+                save_scan("example.com", "web", "default", open_services, findings)
+            return jsonify({'status': 'ok', 'message': f'Scan completed, found {len(open_services)} open ports.'})
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)})
+
     def start_dashboard(port=5000):
-        threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False), daemon=True).start()
-        webbrowser.open(f'http://localhost:{port}')
-        print(f"\n🌐 Aegis Dashboard running at: http://localhost:{port}")
+        port = int(os.environ.get('PORT', port))
+        app.run(host='0.0.0.0', port=port, debug=False)
 
 # ---------- MAIN ----------
 def main():
@@ -1478,7 +2298,6 @@ def main():
     parser.add_argument("--ask", help="Ask Aegis AI a question about your cloud security")
     args = parser.parse_args()
 
-    # --- AI Query ---
     if args.ask:
         context = ""
         try:
@@ -1491,7 +2310,6 @@ def main():
             conn.close()
         except:
             pass
-
         print(f"[*] Asking Aegis AI: {args.ask}")
         response = ai_query(args.ask, context)
         print("\n" + "="*80)
@@ -1501,7 +2319,6 @@ def main():
         print("="*80)
         return
 
-    # --- Dashboard ---
     if args.dashboard:
         if not FLASK_AVAILABLE:
             print("[!] Flask not installed. Run: pip install flask")
@@ -1513,7 +2330,6 @@ def main():
             time.sleep(1)
         return
 
-    # --- Report ---
     if args.report:
         print("[*] Generating PDF compliance report...")
         output = generate_compliance_report(args.host, "apcss_report.pdf")
@@ -1521,12 +2337,10 @@ def main():
             print(f"[+] Report saved to: {output}")
         return
 
-    # --- Multi-account scanning ---
     if args.chain or args.accounts or args.accounts_file:
         run_fix_chain(args)
         return
 
-    # --- Graph (AWS only) ---
     if args.graph:
         print("[*] Building attack graph (AWS only)...")
         resources = fetch_aws_resources('default')
@@ -1540,7 +2354,6 @@ def main():
             print("✅ No attack paths found.")
         return
 
-    # --- Single host/cloud scan (legacy) ---
     if args.db:
         init_db()
         print(f"[HISTORY] Target '{args.host}' - Learning mode active.")
@@ -1557,13 +2370,11 @@ def main():
     print(f"[*] Scanning {args.host} on {len(ports)} ports...")
     open_services = scan_host(args.host, ports, args.threads)
 
-    # If no open ports found, still allow web scanning to proceed.
     if not open_services:
         print("[!] No open ports found. Proceeding with web scanning only...")
 
     all_findings = []
 
-    # --- CLOUD SCAN ---
     if args.cloud:
         print("[*] Checking AWS...")
         all_findings.extend(check_aws_s3_public())
@@ -1575,14 +2386,12 @@ def main():
         print("[*] Checking OCI...")
         all_findings.extend(check_oci_storage_public())
 
-    # --- API SCAN ---
     if open_services:
         for port, (service, banner) in open_services.items():
             if args.api and service in ("HTTP", "HTTPS"):
                 protocol = "https" if port in (443, 8443) else "http"
                 all_findings.extend(check_api_vulnerabilities(args.host, port, protocol))
 
-    # --- WEB SCANNER (DIR, SQLI, XSS) – Always run if flags are set, regardless of open ports ---
     target_url = args.host
     if not (target_url.startswith('http://') or target_url.startswith('https://')):
         target_url = f"https://{target_url}"
@@ -1641,10 +2450,8 @@ def main():
                         cve_data['id']
                     ))
 
-    # --- RISK SCORE ---
     risk_score = calculate_risk_score(all_findings)
 
-    # --- AUTO-REMEDIATION ---
     fixed_count = 0
     if args.fix:
         print("\n" + "="*80)
@@ -1728,7 +2535,6 @@ def main():
     if args.db:
         save_scan(args.host, "local", "default", open_services if open_services else {}, all_findings)
 
-    # --- Print report ---
     table_data = []
     if open_services:
         for port, (service, banner) in open_services.items():
