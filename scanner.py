@@ -1297,7 +1297,7 @@ def run_fix_chain(args):
             print(f"[!] Unknown cloud: {cloud}")
     print("[*] Multi-cloud scanning complete.")
 
-# ---------- HTML TEMPLATES (NO EYE TOGGLE) ----------
+# ---------- HTML TEMPLATES (NO EYE TOGGLE, NO BUSINESS EMAIL MESSAGE) ----------
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html>
@@ -2087,7 +2087,9 @@ if FLASK_AVAILABLE:
                 return render_template_string(LOGIN_HTML, error="Invalid email or password")
         return render_template_string(LOGIN_HTML, error=None)
 
-    FREE_DOMAINS = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 'mail.com', 'protonmail.com', 'icloud.com']
+    # ── BUSINESS EMAIL VALIDATION REMOVED ──
+    # Now any email works. We keep the list commented for later use.
+    # FREE_DOMAINS = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 'mail.com', 'protonmail.com', 'icloud.com']
 
     @app.route('/signup', methods=['GET', 'POST'])
     def signup():
@@ -2096,9 +2098,7 @@ if FLASK_AVAILABLE:
             last_name = request.form['last_name']
             email = request.form['email']
             password = generate_password_hash(request.form['password'])
-            domain = email.split('@')[-1].lower()
-            if domain in FREE_DOMAINS:
-                return render_template_string(SIGNUP_HTML, error="Please use a business email address.")
+            # No domain check – accept any email
             try:
                 conn = sqlite3.connect(DB_NAME)
                 c = conn.cursor()
