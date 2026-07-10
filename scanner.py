@@ -1297,7 +1297,7 @@ def run_fix_chain(args):
             print(f"[!] Unknown cloud: {cloud}")
     print("[*] Multi-cloud scanning complete.")
 
-# ---------- HTML TEMPLATES (with left‑side eye icon – FIXED) ----------
+# ---------- HTML TEMPLATES (NO EYE TOGGLE) ----------
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html>
@@ -1315,23 +1315,6 @@ LOGIN_HTML = """
         .login-box .link a { color: #00d4ff; text-decoration: none; }
         .login-box .forgot { text-align: right; font-size: 12px; margin-top: -10px; margin-bottom: 15px; }
         .login-box .forgot a { color: #5a6a7a; }
-
-        /* ---- Eye on the LEFT – fixed padding ---- */
-        .password-wrapper { position: relative; }
-        .password-wrapper input { padding-left: 45px; }   /* enough space for the eye */
-        .toggle-password {
-            position: absolute;
-            left: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            color: #8ba0b8;
-            cursor: pointer;
-            font-size: 16px;
-            padding: 0;
-            line-height: 1;
-        }
     </style>
 </head>
 <body>
@@ -1342,10 +1325,7 @@ LOGIN_HTML = """
         {% endif %}
         <form method="POST" action="/login">
             <input type="email" name="email" placeholder="Email" required>
-            <div class="password-wrapper">
-                <input type="password" name="password" id="loginPassword" placeholder="Password" required>
-                <button type="button" class="toggle-password" onclick="togglePassword('loginPassword', this)">👁️</button>
-            </div>
+            <input type="password" name="password" placeholder="Password" required>
             <div class="forgot"><a href="#">Forgot password?</a></div>
             <button type="submit">Login</button>
         </form>
@@ -1353,18 +1333,6 @@ LOGIN_HTML = """
             Don't have an account? <a href="/signup">Sign up</a>
         </div>
     </div>
-    <script>
-        function togglePassword(id, btn) {
-            const input = document.getElementById(id);
-            if (input.type === "password") {
-                input.type = "text";
-                btn.textContent = "🙈";
-            } else {
-                input.type = "password";
-                btn.textContent = "👁️";
-            }
-        }
-    </script>
 </body>
 </html>
 """
@@ -1386,23 +1354,6 @@ SIGNUP_HTML = """
         .signup-box .link a { color: #00d4ff; text-decoration: none; }
         .name-row { display: flex; gap: 10px; }
         .name-row input { flex: 1; }
-
-        /* ---- Eye on the LEFT – fixed padding ---- */
-        .password-wrapper { position: relative; }
-        .password-wrapper input { padding-left: 45px; }
-        .toggle-password {
-            position: absolute;
-            left: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            color: #8ba0b8;
-            cursor: pointer;
-            font-size: 16px;
-            padding: 0;
-            line-height: 1;
-        }
     </style>
 </head>
 <body>
@@ -1418,28 +1369,13 @@ SIGNUP_HTML = """
                 <input type="text" name="last_name" placeholder="Last Name" required>
             </div>
             <input type="email" name="email" placeholder="Email" required>
-            <div class="password-wrapper">
-                <input type="password" name="password" id="signupPassword" placeholder="Password" required>
-                <button type="button" class="toggle-password" onclick="togglePassword('signupPassword', this)">👁️</button>
-            </div>
+            <input type="password" name="password" placeholder="Password" required>
             <button type="submit">Sign Up</button>
         </form>
         <div class="link">
             Already have an account? <a href="/login">Login</a>
         </div>
     </div>
-    <script>
-        function togglePassword(id, btn) {
-            const input = document.getElementById(id);
-            if (input.type === "password") {
-                input.type = "text";
-                btn.textContent = "🙈";
-            } else {
-                input.type = "password";
-                btn.textContent = "👁️";
-            }
-        }
-    </script>
 </body>
 </html>
 """
