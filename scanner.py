@@ -1293,7 +1293,7 @@ def run_fix_chain(args):
             print(f"[!] Unknown cloud: {cloud}")
     print("[*] Multi-cloud scanning complete.")
 
-# ---------- HTML TEMPLATES (NO EYE TOGGLE, NO BUSINESS EMAIL MESSAGE) ----------
+# ---------- HTML TEMPLATES ----------
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html>
@@ -1410,7 +1410,7 @@ OTP_HTML = """
             <button type="submit">Verify Account</button>
         </form>
         <div class="resend">
-            Didn't get the code? <a href="/resend-otp">Resend OTP</a>
+            Didn't get the code? <a href="/resend-otp?email={{ email }}">Resend OTP</a>
         </div>
     </div>
 </body>
@@ -1704,7 +1704,7 @@ PRICING_HTML = """
 </html>
 """
 
-# ---------- DASHBOARD WITH AI ASSISTANT ----------
+# ---------- DASHBOARD HTML ----------
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html>
@@ -2114,11 +2114,11 @@ if FLASK_AVAILABLE:
         otp = request.form.get('otp')
 
         if not email or not otp:
-            return render_template_string(OTP_HTML, email=email, otp="", error="Missing email or OTP.")
+            return render_template_string(OTP_HTML, email="", otp="", error="Missing email or OTP.")
 
         # Check if email exists in pending_users
         if email not in pending_users:
-            return render_template_string(OTP_HTML, email=email, otp="", error="OTP expired or not found. Please sign up again.")
+            return render_template_string(OTP_HTML, email=email, otp="", error="OTP expired. Please request a new one.")
 
         stored_data = pending_users[email]
         stored_otp = stored_data['otp']
@@ -2162,13 +2162,25 @@ if FLASK_AVAILABLE:
     @app.route('/resend-otp')
     def resend_otp():
         email = request.args.get('email')
-        if not email or email not in pending_users:
-            return "Email not found. Please sign up again."
+        if not email:
+            return "No email provided."
+
+        # Check if user exists in database
+        conn = sqlite3.connect(DB_NAME)
+        c = conn.cursor()
+        c.execute("SELECT * FROM users WHERE email = ?", (email,))
+        user = c.fetchone()
+        conn.close()
+
+        if not user:
+            return "Email not registered. Please sign up first."
+
+        # Generate new OTP
         otp = generate_otp()
-        pending_users[email]['otp'] = otp
-        pending_users[email]['timestamp'] = datetime.datetime.now()
+        pending_users[email] = {'otp': otp, 'timestamp': datetime.datetime.now()}
         send_otp_email(email, otp)
-        return render_template_string(OTP_HTML, email=email, otp=otp, error="New OTP sent. Check console.")
+
+        return render_template_string(OTP_HTML, email=email, otp=otp, error="New OTP sent. Check your email or console.")
 
     @app.route('/logout')
     def logout():
