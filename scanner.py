@@ -1297,7 +1297,7 @@ def run_fix_chain(args):
             print(f"[!] Unknown cloud: {cloud}")
     print("[*] Multi-cloud scanning complete.")
 
-# ---------- HTML TEMPLATES (with left‑side eye icon) ----------
+# ---------- HTML TEMPLATES (with left‑side eye icon – FIXED) ----------
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html>
@@ -1316,20 +1316,21 @@ LOGIN_HTML = """
         .login-box .forgot { text-align: right; font-size: 12px; margin-top: -10px; margin-bottom: 15px; }
         .login-box .forgot a { color: #5a6a7a; }
 
-        /* ---- Eye on the LEFT ---- */
+        /* ---- Eye on the LEFT – fixed padding ---- */
         .password-wrapper { position: relative; }
-        .password-wrapper input { padding-left: 40px; }
+        .password-wrapper input { padding-left: 45px; }   /* enough space for the eye */
         .toggle-password {
             position: absolute;
-            left: 12px;
+            left: 10px;
             top: 50%;
             transform: translateY(-50%);
             background: none;
             border: none;
             color: #8ba0b8;
             cursor: pointer;
-            font-size: 18px;
+            font-size: 16px;
             padding: 0;
+            line-height: 1;
         }
     </style>
 </head>
@@ -1386,20 +1387,21 @@ SIGNUP_HTML = """
         .name-row { display: flex; gap: 10px; }
         .name-row input { flex: 1; }
 
-        /* ---- Eye on the LEFT ---- */
+        /* ---- Eye on the LEFT – fixed padding ---- */
         .password-wrapper { position: relative; }
-        .password-wrapper input { padding-left: 40px; }
+        .password-wrapper input { padding-left: 45px; }
         .toggle-password {
             position: absolute;
-            left: 12px;
+            left: 10px;
             top: 50%;
             transform: translateY(-50%);
             background: none;
             border: none;
             color: #8ba0b8;
             cursor: pointer;
-            font-size: 18px;
+            font-size: 16px;
             padding: 0;
+            line-height: 1;
         }
     </style>
 </head>
