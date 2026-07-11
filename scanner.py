@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Aegis (APCSS) – Automated Protection of Cloud Security Systems
-Full SaaS with Landing Page, Pricing, OTP, AI Assistant, and Premium UI
+With Human-in-the-Loop + AI Support + Enhanced Web Scanning + User Authentication
 Built by Austin Emmanuel – 19‑year‑old founder from Nigeria
 """
 import socket
@@ -130,7 +130,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-# ---- OTP Storage (in-memory) ----
+# ---- OTP Storage (in-memory for simplicity, replace with Redis/DB later) ----
 pending_users = {}
 
 def generate_otp():
@@ -211,12 +211,44 @@ def send_slack_alert(message, severity="INFO", webhook_url=None, cloud="unknown"
     except Exception:
         pass
 
-# ---------- AI QUERY FUNCTION ----------
+# ---------- AI QUERY FUNCTION (UPDATED WITH FALLBACK KNOWLEDGE) ----------
 def ai_query(question, context=""):
-    if not OLLAMA_AVAILABLE and not OPENAI_AVAILABLE:
-        return "AI not available. Install ollama or openai."
+    """Ask AI about your cloud security – works even without Ollama/OpenAI"""
+    
+    # ─── FALLBACK KNOWLEDGE BASE ───
+    fallback_knowledge = """
+Aegis (APCSS) is the world's first open‑source, four‑cloud, self‑healing security platform.
 
-    system_prompt = f"""
+🔹 WHAT AEGIS DOES:
+- Scans AWS, GCP, Azure, and OCI in one command.
+- Detects attack paths: Internet → Public VM → IAM Role → S3 Bucket.
+- Auto‑fixes: open S3 buckets, overly permissive security groups, exposed EC2 ports, over‑privileged IAM roles.
+- Includes a live dashboard with risk score, cloud inventory, attack path explorer, and AI copilot.
+- Generates compliance reports (PCI‑DSS, HIPAA, SOC2).
+- Sends Slack alerts for critical findings.
+- Supports multi‑account scanning across all clouds.
+
+👤 THE FOUNDER:
+Austin Emmanuel – a 19‑year‑old founder from Nigeria. He built Aegis because commercial tools like Wiz and Orca cost millions and lock security behind paywalls. He wanted to democratize cloud security and give every team, from startups to enterprises, access to world‑class protection – for free.
+
+🏆 WHY AEGIS STANDS OUT:
+- 100% open source – no vendor lock‑in.
+- Four‑cloud coverage (the only open‑source tool that does this).
+- Auto‑remediation of attack chains, not just alerts.
+- AI assistant that answers security questions.
+- Built by a solo founder, not a billion‑dollar corporation.
+
+💡 COMMON QUESTIONS:
+- "What is an attack path?" → A chain of exploitable resources that an attacker can use to move from the internet to your sensitive data.
+- "How do I fix a public S3 bucket?" → Aegis auto‑fixes it with one click, or you can use the CLI: `python scanner.py --fix`.
+- "Which clouds does Aegis support?" → AWS, Azure, GCP, and OCI.
+- "Is Aegis free?" → Yes, completely free and open source.
+- "Who built Aegis?" → Austin Emmanuel, a 19‑year‑old founder from Nigeria.
+"""
+
+    # ─── If AI libraries are available, use them ───
+    if OLLAMA_AVAILABLE or OPENAI_AVAILABLE:
+        system_prompt = f"""
 You are Aegis AI, a cloud security assistant built by Austin Emmanuel, a 19‑year‑old founder from Nigeria.
 
 ABOUT AEGIS:
@@ -240,29 +272,79 @@ Be helpful, accurate, and concise. Use simple language.
 
 Context from the user's cloud scan:
 {context}
+
+User question: {question}
 """
 
-    try:
-        if OLLAMA_AVAILABLE:
-            response = ollama.chat(
-                model="llama3",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": question}
-                ]
-            )
-            return response['message']['content']
-        elif OPENAI_AVAILABLE:
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": question}
-                ]
-            )
-            return response.choices[0].message.content
-    except Exception as e:
-        return f"AI Error: {str(e)}"
+        try:
+            if OLLAMA_AVAILABLE:
+                response = ollama.chat(
+                    model="llama3",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": question}
+                    ]
+                )
+                return response['message']['content']
+            elif OPENAI_AVAILABLE:
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": question}
+                    ]
+                )
+                return response.choices[0].message.content
+        except Exception as e:
+            # If AI fails, use fallback
+            return f"AI service error: {str(e)}.\n\nHere's what I know:\n{fallback_knowledge}"
+
+    # ─── If no AI libraries are installed, use fallback ───
+    # Try to match keywords in the question
+    q_lower = question.lower()
+    if any(word in q_lower for word in ["who", "founder", "built", "created", "austin", "emmanuel"]):
+        return f"""
+👤 ABOUT THE FOUNDER
+
+Austin Emmanuel is a 19‑year‑old founder from Nigeria who built Aegis (APCSS) – the world's first open‑source, four‑cloud, self‑healing security platform.
+
+He created Aegis because commercial cloud security tools like Wiz and Orca charge millions of dollars, locking out startups, students, and independent developers. He wanted to democratize cloud security and give everyone access to enterprise‑grade protection – for free.
+
+Aegis is his vision of a world where security is open, transparent, and accessible to all.
+"""
+    elif any(word in q_lower for word in ["what", "aegis", "apcss", "platform", "does"]):
+        return f"""
+🛡️ WHAT IS AEGIS?
+
+Aegis (APCSS) is a fully open‑source, self‑healing cloud security platform that:
+
+✓ Scans AWS, Azure, GCP, and OCI in a single command.
+✓ Finds attack paths – Internet → EC2 → IAM → S3.
+✓ Auto‑fixes open S3 buckets, security group rules, EC2 ports, and IAM roles.
+✓ Provides a live dashboard with risk scoring, cloud inventory, and attack path visualization.
+✓ Includes an AI security copilot that answers your cloud security questions.
+✓ Generates compliance reports (PCI‑DSS, HIPAA, SOC2).
+✓ Sends Slack alerts for critical risks.
+
+It was built by Austin Emmanuel, a 19‑year‑old founder from Nigeria, to make cloud security accessible to everyone – for free.
+"""
+    else:
+        return f"""
+💡 AEGIS AI ASSISTANT
+
+I'm your cloud security copilot. I can answer questions about:
+
+• Cloud vulnerabilities (S3, EC2, IAM, Security Groups, etc.)
+• Attack paths and how attackers move through your infrastructure
+• Remediation steps for misconfigurations
+• Cloud security best practices
+• Aegis itself – what it is, who built it, and how to use it
+
+Here's a quick summary:
+Aegis is the world's first open‑source, four‑cloud, self‑healing security platform, built by Austin Emmanuel (19, Nigeria). It scans AWS, Azure, GCP, and OCI, finds attack paths, and auto‑fixes risks – all for free.
+
+Ask me something specific!
+"""
 
 # ---------- COMPLIANCE REPORTS (PDF) ----------
 try:
@@ -1293,130 +1375,9 @@ def run_fix_chain(args):
             print(f"[!] Unknown cloud: {cloud}")
     print("[*] Multi-cloud scanning complete.")
 
-# ---------- HTML TEMPLATES ----------
-LOGIN_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Aegis – Login</title>
-    <style>
-        body { background: radial-gradient(ellipse at 50% 50%, #0d1b2a 0%, #050a12 100%); color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .login-box { background: rgba(17, 27, 38, 0.8); backdrop-filter: blur(10px); padding: 40px; border-radius: 12px; border: 1px solid #1e2a3a; width: 350px; }
-        .login-box h1 { text-align: center; color: #00d4ff; margin-bottom: 30px; }
-        .login-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
-        .login-box button { width: 100%; padding: 12px; background: #00d4ff; color: #0a0e17; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
-        .login-box button:hover { background: #7b2ffc; color: #fff; }
-        .login-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
-        .login-box .link { text-align: center; margin-top: 15px; color: #8ba0b8; font-size: 14px; }
-        .login-box .link a { color: #00d4ff; text-decoration: none; }
-        .login-box .forgot { text-align: right; font-size: 12px; margin-top: -10px; margin-bottom: 15px; }
-        .login-box .forgot a { color: #5a6a7a; }
-    </style>
-</head>
-<body>
-    <div class="login-box">
-        <h1>🛡️ Aegis</h1>
-        {% if error %}
-        <div class="error">{{ error }}</div>
-        {% endif %}
-        <form method="POST" action="/login">
-            <input type="email" name="email" placeholder="Email" required>
-            <input type="password" name="password" placeholder="Password" required>
-            <div class="forgot"><a href="#">Forgot password?</a></div>
-            <button type="submit">Login</button>
-        </form>
-        <div class="link">
-            Don't have an account? <a href="/signup">Sign up</a>
-        </div>
-    </div>
-</body>
-</html>
-"""
+# ---------- HTML TEMPLATES (LANDING + DASHBOARD) ----------
 
-SIGNUP_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Aegis – Sign Up</title>
-    <style>
-        body { background: radial-gradient(ellipse at 50% 50%, #0d1b2a 0%, #050a12 100%); color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .signup-box { background: rgba(17, 27, 38, 0.8); backdrop-filter: blur(10px); padding: 40px; border-radius: 12px; border: 1px solid #1e2a3a; width: 360px; }
-        .signup-box h1 { text-align: center; color: #00d4ff; margin-bottom: 30px; }
-        .signup-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
-        .signup-box button { width: 100%; padding: 12px; background: #00d4ff; color: #0a0e17; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
-        .signup-box button:hover { background: #7b2ffc; color: #fff; }
-        .signup-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
-        .signup-box .link { text-align: center; margin-top: 15px; color: #8ba0b8; font-size: 14px; }
-        .signup-box .link a { color: #00d4ff; text-decoration: none; }
-        .name-row { display: flex; gap: 10px; }
-        .name-row input { flex: 1; }
-    </style>
-</head>
-<body>
-    <div class="signup-box">
-        <h1>🛡️ Aegis</h1>
-        <h3 style="text-align:center; color:#8ba0b8; margin-top:-10px;">Create Account</h3>
-        {% if error %}
-        <div class="error">{{ error }}</div>
-        {% endif %}
-        <form method="POST" action="/signup">
-            <div class="name-row">
-                <input type="text" name="first_name" placeholder="First Name" required>
-                <input type="text" name="last_name" placeholder="Last Name" required>
-            </div>
-            <input type="email" name="email" placeholder="Email" required>
-            <input type="password" name="password" placeholder="Password" required>
-            <button type="submit">Sign Up</button>
-        </form>
-        <div class="link">
-            Already have an account? <a href="/login">Login</a>
-        </div>
-    </div>
-</body>
-</html>
-"""
-
-OTP_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Aegis – Verify Email</title>
-    <style>
-        body { background: radial-gradient(ellipse at 50% 50%, #0d1b2a 0%, #050a12 100%); color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .otp-box { background: rgba(17, 27, 38, 0.8); backdrop-filter: blur(10px); padding: 40px; border-radius: 12px; border: 1px solid #1e2a3a; width: 350px; }
-        .otp-box h1 { text-align: center; color: #00d4ff; margin-bottom: 30px; }
-        .otp-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid #1e2a3a; color: #e0e6ed; border-radius: 6px; box-sizing: border-box; text-align: center; font-size: 24px; letter-spacing: 8px; }
-        .otp-box button { width: 100%; padding: 12px; background: #00d4ff; color: #0a0e17; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
-        .otp-box button:hover { background: #7b2ffc; color: #fff; }
-        .otp-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
-        .otp-box .info { color: #8ba0b8; text-align: center; margin-bottom: 20px; font-size: 14px; }
-        .otp-box .otp-display { background: #0a0e17; border: 1px solid #2ed573; border-radius: 8px; padding: 12px; text-align: center; margin-bottom: 20px; color: #2ed573; font-size: 28px; letter-spacing: 6px; font-weight: bold; }
-        .otp-box .resend { text-align: center; margin-top: 15px; color: #8ba0b8; font-size: 14px; }
-        .otp-box .resend a { color: #00d4ff; text-decoration: none; }
-    </style>
-</head>
-<body>
-    <div class="otp-box">
-        <h1>📧 Verify Email</h1>
-        <div class="info">We sent a 6‑digit code to <strong>{{ email }}</strong>.</div>
-        <div class="otp-display">🔑 {{ otp }}</div>
-        <div class="info" style="font-size:12px; color:#5a6a7a;">(Copy this code and paste it below)</div>
-        {% if error %}
-        <div class="error">{{ error }}</div>
-        {% endif %}
-        <form method="POST" action="/verify-otp">
-            <input type="hidden" name="email" value="{{ email }}">
-            <input type="text" name="otp" placeholder="6‑digit code" maxlength="6" required autofocus>
-            <button type="submit">Verify Account</button>
-        </form>
-        <div class="resend">
-            Didn't get the code? <a href="/resend-otp?email={{ email }}">Resend OTP</a>
-        </div>
-    </div>
-</body>
-</html>
-"""
-
+# ========== LANDING PAGE (BLACK/WHITE/BLUE PREMIUM) ==========
 LANDING_PAGE_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -1834,124 +1795,718 @@ LANDING_PAGE_HTML = """
 </html>
 """
 
-# ---------- DASHBOARD HTML ----------
+# ========== DASHBOARD (PREMIUM WITH COMMAND INPUT + AI SHIELD) ==========
 DASHBOARD_HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Aegis Security Dashboard</title>
+    <title>Aegis Security Command Center</title>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-        body { background: radial-gradient(ellipse at 50% 0%, #0d1b2a 0%, #050a12 100%); color: #e0e6ed; display: flex; height: 100vh; overflow: hidden; }
-        .sidebar { width: 220px; background: #0d1520; border-right: 1px solid #1e2a3a; padding: 20px 0; height: 100vh; position: fixed; left: 0; top: 0; overflow-y: auto; }
-        .sidebar .logo { font-size: 22px; font-weight: 700; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; padding: 0 20px; margin-bottom: 30px; }
-        .sidebar .logo span { font-size: 12px; display: block; -webkit-text-fill-color: #5a6a7a; }
-        .sidebar a { display: block; padding: 12px 20px; color: #8ba0b8; text-decoration: none; font-size: 14px; border-left: 3px solid transparent; transition: all 0.2s; }
-        .sidebar a:hover, .sidebar a.active { background: #111b26; color: #e0e6ed; border-left-color: #00d4ff; }
-        .sidebar a .icon { margin-right: 10px; }
-        .sidebar .logout { margin-top: 40px; border-top: 1px solid #1e2a3a; padding-top: 20px; color: #ff4757; }
-        .sidebar .logout:hover { border-left-color: #ff4757; }
-        .main { margin-left: 220px; flex: 1; padding: 20px 30px; overflow-y: auto; height: 100vh; }
-        .topbar { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid #1e2a3a; margin-bottom: 25px; }
-        .topbar h1 { font-size: 24px; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .topbar .user { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
-        .topbar .user .email { color: #8ba0b8; font-size: 14px; }
-        .topbar .user .badge { background: #1e2a3a; padding: 6px 14px; border-radius: 20px; font-size: 12px; color: #8ba0b8; }
-        .topbar .user .last-updated { color: #5a6a7a; font-size: 12px; }
-        .scan-btn { background: #00d4ff; color: #0a0e17; border: none; padding: 8px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        .scan-btn:hover { background: #7b2ffc; color: #fff; }
+        * { font-family: 'Inter', sans-serif; }
+        body {
+            background: #000000;
+            color: #ffffff;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ─── Sidebar ─── */
+        .sidebar {
+            width: 240px;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(24px);
+            border-right: 1px solid rgba(255,255,255,0.06);
+            padding: 24px 0;
+            height: 100vh;
+            position: fixed;
+            left: 0;
+            top: 0;
+            overflow-y: auto;
+            z-index: 10;
+        }
+
+        .sidebar .logo {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #2563eb, #60a5fa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            padding: 0 24px;
+            margin-bottom: 30px;
+            letter-spacing: -0.5px;
+        }
+
+        .sidebar .logo span {
+            font-size: 11px;
+            display: block;
+            -webkit-text-fill-color: #64748b;
+            font-weight: 400;
+            letter-spacing: 0.5px;
+        }
+
+        .sidebar a {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 24px;
+            color: #94a3b8;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            border-left: 3px solid transparent;
+            transition: 0.2s;
+        }
+
+        .sidebar a:hover,
+        .sidebar a.active {
+            background: rgba(255,255,255,.04);
+            color: #ffffff;
+            border-left-color: #2563eb;
+        }
+
+        .sidebar a .icon { font-size: 18px; }
+        .sidebar .logout {
+            margin-top: 40px;
+            border-top: 1px solid rgba(255,255,255,.06);
+            padding-top: 20px;
+            color: #ef4444;
+        }
+        .sidebar .logout:hover { border-left-color: #ef4444; }
+
+        /* ─── Main ─── */
+        .main {
+            margin-left: 240px;
+            flex: 1;
+            padding: 24px 32px;
+            overflow-y: auto;
+            height: 100vh;
+            background:
+                radial-gradient(circle at 10% 10%, rgba(37,99,235,0.12), transparent 35%),
+                radial-gradient(circle at 85% 85%, rgba(96,165,250,0.08), transparent 40%),
+                #000000;
+        }
+
+        /* ─── Top Bar ─── */
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .topbar-left h1 {
+            font-size: 26px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #ffffff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .ai-shield {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(37,99,235,0.12);
+            border: 1px solid rgba(37,99,235,0.25);
+            border-radius: 999px;
+            padding: 6px 16px 6px 10px;
+            backdrop-filter: blur(12px);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .ai-shield:hover {
+            background: rgba(37,99,235,0.2);
+            box-shadow: 0 0 40px rgba(37,99,235,0.2);
+            transform: scale(1.02);
+        }
+
+        .ai-shield .shield-icon {
+            font-size: 22px;
+            filter: drop-shadow(0 0 10px rgba(37,99,235,0.4));
+            animation: pulseGlow 2s infinite;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { filter: drop-shadow(0 0 10px rgba(37,99,235,0.3)); }
+            50% { filter: drop-shadow(0 0 30px rgba(37,99,235,0.6)); }
+        }
+
+        .ai-shield .badge {
+            color: #60a5fa;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .ai-shield .chat-input {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 999px;
+            padding: 4px 12px;
+            font-size: 12px;
+            color: #e2e8f0;
+            outline: none;
+            width: 140px;
+            transition: 0.3s;
+        }
+
+        .ai-shield .chat-input:focus {
+            border-color: #2563eb;
+            background: rgba(255,255,255,0.1);
+        }
+
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .topbar-right .user-badge {
+            background: rgba(255,255,255,.06);
+            padding: 6px 14px;
+            border-radius: 999px;
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        .scan-btn {
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            color: #fff;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 999px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.3s;
+            box-shadow: 0 4px 20px rgba(37,99,235,0.3);
+        }
+
+        .scan-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(37,99,235,0.5);
+        }
         .scan-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .stat-card { background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 12px; padding: 20px; border: 1px solid #1e2a3a; transition: transform 0.2s; }
-        .stat-card:hover { transform: translateY(-3px); border-color: #00d4ff; }
-        .stat-card .number { font-size: 30px; font-weight: 700; color: #00d4ff; }
-        .stat-card .label { font-size: 14px; color: #8ba0b8; margin-top: 4px; display: flex; align-items: center; gap: 8px; }
-        .stat-card.critical .number { color: #ff4757; }
-        .stat-card.fixed .number { color: #2ed573; }
-        .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-bottom: 30px; }
-        .chart-box { background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 12px; padding: 20px; border: 1px solid #1e2a3a; }
-        .chart-box h3 { font-size: 16px; color: #8ba0b8; margin-bottom: 15px; }
+
+        .refresh-btn {
+            background: rgba(255,255,255,.06);
+            border: 1px solid rgba(255,255,255,.08);
+            color: #e2e8f0;
+            padding: 8px 16px;
+            border-radius: 999px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: 0.2s;
+        }
+        .refresh-btn:hover { background: rgba(255,255,255,.1); }
+
+        /* ─── Command Input Section ─── */
+        .command-section {
+            background: rgba(255,255,255,0.02);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 24px;
+            padding: 20px 24px;
+            margin-bottom: 28px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .command-section .cmd-label {
+            color: #94a3b8;
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .command-section .cmd-input {
+            flex: 1;
+            min-width: 200px;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 999px;
+            padding: 10px 20px;
+            color: #e2e8f0;
+            font-size: 14px;
+            outline: none;
+            transition: 0.3s;
+        }
+
+        .command-section .cmd-input:focus {
+            border-color: #2563eb;
+            box-shadow: 0 0 20px rgba(37,99,235,0.1);
+        }
+
+        .command-section .cmd-btn {
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            color: #fff;
+            border: none;
+            padding: 10px 28px;
+            border-radius: 999px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.3s;
+            box-shadow: 0 4px 20px rgba(37,99,235,0.25);
+            white-space: nowrap;
+        }
+
+        .command-section .cmd-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(37,99,235,0.4);
+        }
+
+        /* ─── Scan Results Log ─── */
+        .results-section {
+            background: rgba(255,255,255,0.02);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 24px;
+            padding: 20px 24px;
+            margin-bottom: 28px;
+        }
+
+        .results-section .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .results-section .header h3 {
+            color: #94a3b8;
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .results-section .header .clear-btn {
+            background: none;
+            border: none;
+            color: #64748b;
+            font-size: 12px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .results-section .header .clear-btn:hover { color: #ef4444; }
+
+        .results-log {
+            background: rgba(0,0,0,0.4);
+            border-radius: 16px;
+            padding: 16px;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: #94a3b8;
+            border: 1px solid rgba(255,255,255,0.04);
+        }
+
+        .results-log .log-entry {
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            color: #e2e8f0;
+        }
+
+        .results-log .log-entry .timestamp {
+            color: #64748b;
+            margin-right: 12px;
+        }
+
+        .results-log .log-entry .success { color: #34d399; }
+        .results-log .log-entry .error { color: #f87171; }
+        .results-log .log-entry .info { color: #60a5fa; }
+
+        /* ─── Executive Metrics ─── */
+        .executive-grid {
+            display: grid;
+            grid-template-columns: repeat(4,1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .exec-card {
+            padding: 24px;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.02);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255,255,255,0.06);
+            transition: 0.3s;
+        }
+
+        .exec-card:hover {
+            border-color: #2563eb;
+            transform: translateY(-3px);
+            box-shadow: 0 10px 40px rgba(37,99,235,0.1);
+        }
+
+        .exec-card .exec-label {
+            color: #94a3b8;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .exec-card h1 {
+            font-size: 42px;
+            margin-top: 8px;
+            margin-bottom: 4px;
+            background: linear-gradient(135deg, #60a5fa, #2563eb);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .exec-card small {
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        /* ─── Charts ─── */
+        .chart-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 30px;
+        }
+
+        .chart-box {
+            background: rgba(255,255,255,0.02);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 24px;
+            padding: 24px;
+        }
+
+        .chart-box h3 {
+            font-size: 16px;
+            color: #94a3b8;
+            margin-bottom: 16px;
+        }
+
         .chart-box canvas { max-height: 200px; width: 100% !important; }
-        .section { background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #1e2a3a; }
-        .section h2 { font-size: 18px; margin-bottom: 15px; color: #8ba0b8; }
-        table { width: 100%; border-collapse: collapse; font-size: 14px; }
-        th { text-align: left; padding: 10px; color: #8ba0b8; border-bottom: 1px solid #1e2a3a; }
-        td { padding: 10px; border-bottom: 1px solid #0d1620; }
-        .severity-critical { color: #ff4757; font-weight: bold; }
-        .severity-high { color: #ffa502; font-weight: bold; }
-        .severity-medium { color: #eccc68; }
-        .severity-info { color: #8ba0b8; }
-        .fixed-true { color: #2ed573; }
-        .fixed-false { color: #ffa502; }
-        .path-chain { font-family: monospace; font-size: 13px; background: #0a0e17; padding: 6px 12px; border-radius: 6px; display: inline-block; }
-        .empty { color: #5a6a7a; font-style: italic; }
-        .refresh-btn { background: #1e2a3a; border: none; color: #e0e6ed; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px; }
-        .refresh-btn:hover { background: #2a3a4a; }
-        .scan-loading { display: inline-block; width: 16px; height: 16px; border: 2px solid #8ba0b8; border-top-color: #00d4ff; border-radius: 50%; animation: spin 0.8s linear infinite; margin-left: 10px; vertical-align: middle; }
-        @keyframes spin { to { transform: rotate(360deg); } }
 
-        .ai-bubble { position: fixed; bottom: 30px; right: 30px; z-index: 999; }
-        .ai-bubble button { width: 60px; height: 60px; border-radius: 50%; background: linear-gradient(135deg, #00d4ff, #7b2ffc); border: none; color: #fff; font-size: 30px; cursor: pointer; box-shadow: 0 0 30px rgba(0,212,255,0.3); transition: 0.3s; display: flex; align-items: center; justify-content: center; }
-        .ai-bubble button:hover { transform: scale(1.1); box-shadow: 0 0 40px rgba(0,212,255,0.5); }
-        .ai-chat { display: none; position: fixed; bottom: 100px; right: 30px; width: 380px; max-height: 500px; background: #111b26; border: 1px solid #1e2a3a; border-radius: 16px; overflow: hidden; z-index: 999; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.8); }
-        .ai-chat.open { display: flex; }
-        .ai-chat .header { padding: 15px 20px; background: #0d1520; border-bottom: 1px solid #1e2a3a; display: flex; justify-content: space-between; align-items: center; }
-        .ai-chat .header h3 { color: #00d4ff; font-size: 16px; }
-        .ai-chat .header .close { background: none; border: none; color: #8ba0b8; font-size: 20px; cursor: pointer; }
-        .ai-chat .messages { flex: 1; padding: 15px; overflow-y: auto; max-height: 300px; }
-        .ai-chat .messages .msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 10px; max-width: 80%; word-wrap: break-word; }
-        .ai-chat .messages .msg.user { background: #1e2a3a; color: #e0e6ed; align-self: flex-end; margin-left: auto; }
-        .ai-chat .messages .msg.ai { background: #0a0e17; border: 1px solid #1e2a3a; color: #8ba0b8; align-self: flex-start; }
-        .ai-chat .input-area { display: flex; padding: 10px; border-top: 1px solid #1e2a3a; background: #0d1520; }
-        .ai-chat .input-area input { flex: 1; padding: 10px; border: none; border-radius: 8px; background: #0a0e17; color: #e0e6ed; outline: none; }
-        .ai-chat .input-area button { margin-left: 10px; padding: 10px 16px; background: #00d4ff; color: #0a0e17; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
-        .ai-chat .input-area button:hover { background: #7b2ffc; color: #fff; }
+        /* ─── Cloud Inventory ─── */
+        .cloud-grid {
+            display: grid;
+            grid-template-columns: repeat(4,1fr);
+            gap: 20px;
+            margin-top: 16px;
+        }
 
-        @media (max-width: 768px) { .sidebar { display: none; } .main { margin-left: 0; } .chart-row { grid-template-columns: 1fr; } .stats { grid-template-columns: 1fr 1fr; } .ai-chat { width: 300px; right: 10px; bottom: 90px; } }
+        .cloud-card {
+            background: rgba(255,255,255,0.02);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 20px;
+            padding: 24px;
+            text-align: center;
+            transition: 0.3s;
+        }
+
+        .cloud-card:hover { border-color: #2563eb; transform: translateY(-3px); }
+        .cloud-card .cloud-name { font-size: 16px; font-weight: 600; color: #94a3b8; }
+        .cloud-card h1 { font-size: 36px; margin-top: 10px; color: #e2e8f0; }
+
+        /* ─── Attack Paths ─── */
+        .path-card {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px;
+            padding: 18px 20px;
+            margin-bottom: 12px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .path-node {
+            padding: 10px 18px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+            font-weight: 500;
+            font-size: 14px;
+            color: #e2e8f0;
+        }
+        .path-arrow { color: #2563eb; font-size: 20px; }
+        .empty-state { color: #64748b; font-style: italic; padding: 20px; text-align: center; }
+
+        /* ─── Sections ─── */
+        .section {
+            background: rgba(255,255,255,0.02);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 24px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .section h2 {
+            font-size: 18px;
+            color: #94a3b8;
+            margin-bottom: 16px;
+            font-weight: 600;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px 8px;
+            color: #64748b;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            font-weight: 500;
+        }
+
+        td {
+            padding: 12px 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+        }
+
+        .severity-critical { color: #ef4444; font-weight: 700; }
+        .severity-high { color: #f59e0b; font-weight: 700; }
+        .severity-medium { color: #eab308; }
+        .severity-info { color: #94a3b8; }
+        .fixed-true { color: #34d399; }
+        .fixed-false { color: #f59e0b; }
+
+        /* ─── AI Chat Overlay ─── */
+        .ai-chat-overlay {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 400px;
+            max-height: 500px;
+            background: rgba(0,0,0,0.9);
+            backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 24px;
+            padding: 20px;
+            z-index: 999;
+            box-shadow: 0 30px 80px rgba(0,0,0,0.8);
+            display: none;
+            flex-direction: column;
+        }
+
+        .ai-chat-overlay.open { display: flex; }
+
+        .ai-chat-overlay .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .ai-chat-overlay .header h3 { color: #60a5fa; }
+
+        .ai-chat-overlay .header .close-btn {
+            background: none;
+            border: none;
+            color: #94a3b8;
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .ai-chat-overlay .messages {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+            padding-right: 8px;
+        }
+
+        .ai-chat-overlay .messages .msg {
+            padding: 12px;
+            border-radius: 16px;
+            margin-bottom: 8px;
+            word-wrap: break-word;
+        }
+
+        .ai-chat-overlay .messages .msg.user {
+            background: rgba(255,255,255,0.06);
+            color: #e2e8f0;
+            text-align: right;
+        }
+
+        .ai-chat-overlay .messages .msg.ai {
+            background: rgba(37,99,235,0.08);
+            color: #94a3b8;
+        }
+
+        .ai-chat-overlay .input-area {
+            display: flex;
+            gap: 8px;
+        }
+
+        .ai-chat-overlay .input-area input {
+            flex: 1;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 999px;
+            padding: 10px 16px;
+            color: #e2e8f0;
+            outline: none;
+        }
+
+        .ai-chat-overlay .input-area button {
+            background: linear-gradient(135deg, #2563eb, #3b82f6);
+            border: none;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 999px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        /* ─── Responsive ─── */
+        @media (max-width: 1024px) {
+            .executive-grid { grid-template-columns: repeat(2,1fr); }
+            .chart-row { grid-template-columns: 1fr; }
+            .cloud-grid { grid-template-columns: repeat(2,1fr); }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main { margin-left: 0; padding: 16px; }
+            .executive-grid { grid-template-columns: 1fr; }
+            .cloud-grid { grid-template-columns: 1fr; }
+            .topbar { flex-direction: column; align-items: stretch; }
+            .topbar-left, .topbar-right { justify-content: space-between; flex-wrap: wrap; }
+            .command-section .cmd-input { min-width: 150px; }
+            .ai-shield .chat-input { width: 100px; }
+            .ai-chat-overlay { width: calc(100% - 20px); right: 10px; bottom: 10px; }
+        }
     </style>
 </head>
 <body>
 
     <!-- Sidebar -->
     <div class="sidebar">
-        <div class="logo">🛡️ Aegis<span>Cloud Security</span></div>
-        <a href="#" class="active"><span class="icon">📊</span> Dashboard</a>
+        <div class="logo">🛡️ Aegis<span>Command Center</span></div>
+        <a href="#" class="active"><span class="icon">📊</span> Overview</a>
+        <a href="#"><span class="icon">☁️</span> Cloud Assets</a>
+        <a href="#"><span class="icon">🔗</span> Attack Paths</a>
+        <a href="#"><span class="icon">🛡️</span> Findings</a>
+        <a href="#"><span class="icon">📋</span> Compliance</a>
+        <a href="#"><span class="icon">🤖</span> AI Copilot</a>
         <a href="/pricing"><span class="icon">💰</span> Pricing</a>
-        <a href="#"><span class="icon">🔍</span> Scans</a>
-        <a href="#"><span class="icon">🔔</span> Alerts</a>
         <a href="/logout" class="logout"><span class="icon">🚪</span> Logout</a>
     </div>
 
     <!-- Main -->
     <div class="main">
+
         <!-- Top Bar -->
         <div class="topbar">
-            <h1>📊 Dashboard</h1>
-            <div class="user">
-                <span class="badge">{{ company }}</span>
-                <span class="email">{{ email }}</span>
-                <span class="last-updated" id="lastUpdated">Last updated: --</span>
+            <div class="topbar-left">
+                <h1>📊 Command Center</h1>
+                <!-- Premium AI Shield -->
+                <div class="ai-shield" onclick="toggleAI()">
+                    <span class="shield-icon">🛡️</span>
+                    <span class="badge">AI Copilot</span>
+                    <input type="text" class="chat-input" id="quickAIInput" placeholder="Ask security..." onkeypress="if(event.key==='Enter') quickAsk()" />
+                </div>
+            </div>
+            <div class="topbar-right">
+                <span class="user-badge">{{ company }}</span>
+                <span class="user-badge">{{ email }}</span>
+                <span class="last-updated text-slate-500 text-xs" id="lastUpdated">--</span>
                 <button class="scan-btn" id="scanBtn" onclick="startScan()">⚡ Scan Now</button>
                 <button class="refresh-btn" onclick="loadData()">⟳ Refresh</button>
                 <div id="scanSpinner" style="display:inline;"></div>
             </div>
         </div>
 
-        <!-- Stats -->
-        <div class="stats" id="stats">
-            <div class="stat-card"><div class="number" id="totalScans">-</div><div class="label">📋 Total Scans</div></div>
-            <div class="stat-card critical"><div class="number" id="criticalFindings">-</div><div class="label">🔥 Critical Findings</div></div>
-            <div class="stat-card fixed"><div class="number" id="fixedIssues">-</div><div class="label">✅ Auto-Fixed</div></div>
-            <div class="stat-card"><div class="number" id="openPorts">-</div><div class="label">🔌 Open Ports</div></div>
+        <!-- Command Input Section -->
+        <div class="command-section">
+            <span class="cmd-label"><i class="fas fa-terminal"></i> Run Command</span>
+            <input type="text" class="cmd-input" id="cmdInput" placeholder='e.g., scan example.com -p 80,443' />
+            <button class="cmd-btn" onclick="runCommand()"><i class="fas fa-play mr-2"></i>Execute</button>
+            <button class="cmd-btn" style="background:rgba(255,255,255,0.06); box-shadow:none;" onclick="clearLogs()"><i class="fas fa-eraser mr-2"></i>Clear</button>
+        </div>
+
+        <!-- Results Log -->
+        <div class="results-section">
+            <div class="header">
+                <h3><i class="fas fa-code mr-2"></i>Scan Results / Log</h3>
+                <button class="clear-btn" onclick="clearLogs()">Clear All</button>
+            </div>
+            <div class="results-log" id="resultsLog">
+                <div class="log-entry"><span class="timestamp">[System]</span> <span class="info">Ready. Enter a command to start.</span></div>
+            </div>
+        </div>
+
+        <!-- Executive Metrics -->
+        <div class="executive-grid">
+            <div class="exec-card">
+                <div class="exec-label">Risk Score</div>
+                <h1 id="riskScore">--</h1>
+                <small>Security posture</small>
+            </div>
+            <div class="exec-card">
+                <div class="exec-label">Assets Protected</div>
+                <h1 id="assetsProtected">--</h1>
+                <small>Across all clouds</small>
+            </div>
+            <div class="exec-card">
+                <div class="exec-label">Attack Paths</div>
+                <h1 id="activePaths">--</h1>
+                <small>Reachable exposures</small>
+            </div>
+            <div class="exec-card">
+                <div class="exec-label">Auto Remediated</div>
+                <h1 id="autoRemediated">--</h1>
+                <small>Issues fixed</small>
+            </div>
         </div>
 
         <!-- Charts -->
         <div class="chart-row">
             <div class="chart-box"><h3>📈 Vulnerability Trend</h3><canvas id="trendChart"></canvas></div>
             <div class="chart-box"><h3>📊 Severity Breakdown</h3><canvas id="severityChart"></canvas></div>
+        </div>
+
+        <!-- Cloud Inventory -->
+        <div class="section">
+            <h2>☁️ Cloud Inventory</h2>
+            <div class="cloud-grid">
+                <div class="cloud-card"><div class="cloud-name">AWS</div><h1 id="awsCount">0</h1></div>
+                <div class="cloud-card"><div class="cloud-name">Azure</div><h1 id="azureCount">0</h1></div>
+                <div class="cloud-card"><div class="cloud-name">GCP</div><h1 id="gcpCount">0</h1></div>
+                <div class="cloud-card"><div class="cloud-name">OCI</div><h1 id="ociCount">0</h1></div>
+            </div>
+        </div>
+
+        <!-- Attack Paths -->
+        <div class="section">
+            <h2>🔗 Attack Path Explorer</h2>
+            <div id="attackPaths"></div>
         </div>
 
         <!-- Recent Scans -->
@@ -1972,52 +2527,126 @@ DASHBOARD_HTML = """
             </table>
         </div>
 
-        <!-- Attack Paths -->
-        <div class="section">
-            <h2>🔥 Attack Paths</h2>
-            <div id="attackPaths"></div>
-        </div>
     </div>
 
-    <!-- AI Assistant -->
-    <div class="ai-bubble">
-        <button id="aiToggle" onclick="toggleAI()">🛡️</button>
-    </div>
-    <div class="ai-chat" id="aiChat">
+    <!-- AI Chat Overlay -->
+    <div class="ai-chat-overlay" id="aiChatOverlay">
         <div class="header">
-            <h3>🤖 Aegis AI</h3>
-            <button class="close" onclick="toggleAI()">✕</button>
+            <h3>🤖 Aegis AI Copilot</h3>
+            <button class="close-btn" onclick="toggleAI()">✕</button>
         </div>
         <div class="messages" id="aiMessages">
-            <div class="msg ai">👋 Hi! I'm your cloud security assistant. Ask me anything about your cloud security.</div>
+            <div class="msg ai">👋 Hi! I'm your cloud security copilot. Ask me anything about your cloud posture, attack paths, or remediation.</div>
         </div>
         <div class="input-area">
-            <input type="text" id="aiInput" placeholder="Ask a question..." onkeypress="if(event.key==='Enter') sendAI()">
+            <input type="text" id="aiInput" placeholder="Ask a question..." onkeypress="if(event.key==='Enter') sendAI()" />
             <button onclick="sendAI()">Send</button>
         </div>
     </div>
 
     <script>
+        // ─── Command Execution ───
+        function runCommand() {
+            const input = document.getElementById('cmdInput');
+            const cmd = input.value.trim();
+            if (!cmd) {
+                addLog('Please enter a command.', 'error');
+                return;
+            }
+            addLog('> ' + cmd, 'info');
+            input.value = '';
+
+            // Parse command (simple)
+            if (cmd.startsWith('scan ')) {
+                const parts = cmd.split(' ');
+                let target = 'example.com';
+                let ports = '80,443';
+                for (let i = 1; i < parts.length; i++) {
+                    if (parts[i] === '-p' && i+1 < parts.length) {
+                        ports = parts[i+1];
+                        i++;
+                    } else if (!parts[i].startsWith('-')) {
+                        target = parts[i];
+                    }
+                }
+                addLog(`Starting scan on ${target} ports ${ports}...`, 'info');
+                // Call scan endpoint with parameters (POST /scan)
+                fetch('/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target: target, ports: ports })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        addLog(`✅ Scan completed: ${data.message}`, 'success');
+                        loadData(); // refresh dashboard
+                    } else {
+                        addLog(`❌ Scan failed: ${data.message}`, 'error');
+                    }
+                })
+                .catch(err => {
+                    addLog(`❌ Error: ${err.message}`, 'error');
+                });
+            } else {
+                addLog(`Unknown command: "${cmd}"`, 'error');
+            }
+        }
+
+        function addLog(message, type='info') {
+            const log = document.getElementById('resultsLog');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const ts = new Date().toLocaleTimeString();
+            let cls = '';
+            if (type === 'success') cls = 'success';
+            else if (type === 'error') cls = 'error';
+            else if (type === 'info') cls = 'info';
+            entry.innerHTML = `<span class="timestamp">[${ts}]</span> <span class="${cls}">${message}</span>`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function clearLogs() {
+            const log = document.getElementById('resultsLog');
+            log.innerHTML = `<div class="log-entry"><span class="timestamp">[System]</span> <span class="info">Log cleared.</span></div>`;
+        }
+
+        // ─── Load Data ───
         async function loadData() {
             try {
                 const res = await fetch('/api/data');
                 const data = await res.json();
 
-                document.getElementById('totalScans').textContent = data.total_scans || 0;
-                document.getElementById('criticalFindings').textContent = data.critical_findings || 0;
-                document.getElementById('fixedIssues').textContent = data.fixed_issues || 0;
-                document.getElementById('openPorts').textContent = data.open_ports || 0;
+                document.getElementById('riskScore').textContent = calculateRiskScore(data.alerts) || '--';
+                document.getElementById('assetsProtected').textContent = data.total_scans || '--';
+                document.getElementById('activePaths').textContent = data.attack_paths ? data.attack_paths.length : 0;
+                document.getElementById('autoRemediated').textContent = data.fixed_issues || 0;
                 document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
 
+                const cloudCounts = { aws: 0, azure: 0, gcp: 0, oci: 0 };
+                if (data.scans) {
+                    data.scans.forEach(s => {
+                        const cloud = s[1] ? s[1].toLowerCase() : '';
+                        if (cloud in cloudCounts) cloudCounts[cloud] += 1;
+                    });
+                }
+                document.getElementById('awsCount').textContent = cloudCounts.aws;
+                document.getElementById('azureCount').textContent = cloudCounts.azure;
+                document.getElementById('gcpCount').textContent = cloudCounts.gcp;
+                document.getElementById('ociCount').textContent = cloudCounts.oci;
+
+                // Scans table
                 const scansTable = document.getElementById('scansTable');
                 if (data.scans && data.scans.length > 0) {
                     scansTable.innerHTML = data.scans.map(s => `
                         <tr><td>${s[0]}</td><td>${s[1]}</td><td>${s[2]}</td><td>${s[3]}</td></tr>
                     `).join('');
                 } else {
-                    scansTable.innerHTML = `<tr><td colspan="4" class="empty">No scans yet. Click "Scan Now" to start your first scan!</td></tr>`;
+                    scansTable.innerHTML = `<tr><td colspan="4" class="empty-state">No scans yet. Run a command.</td></tr>`;
                 }
 
+                // Alerts table
                 const alertsTable = document.getElementById('alertsTable');
                 if (data.alerts && data.alerts.length > 0) {
                     alertsTable.innerHTML = data.alerts.map(a => `
@@ -2029,22 +2658,25 @@ DASHBOARD_HTML = """
                         </tr>
                     `).join('');
                 } else {
-                    alertsTable.innerHTML = `<tr><td colspan="4" class="empty">No alerts yet.</td></tr>`;
+                    alertsTable.innerHTML = `<tr><td colspan="4" class="empty-state">No alerts yet.</td></tr>`;
                 }
 
+                // Attack Paths
                 const pathsDiv = document.getElementById('attackPaths');
                 if (data.attack_paths && data.attack_paths.length > 0) {
-                    pathsDiv.innerHTML = data.attack_paths.map((path, i) => `
-                        <div style="margin-bottom: 8px; padding: 10px 14px; background: #0a0e17; border-radius: 8px; border-left: 3px solid #ff4757;">
-                            <strong>Path ${i+1}:</strong>
-                            <span class="path-chain">${path.join(' → ')}</span>
+                    pathsDiv.innerHTML = data.attack_paths.map(path => `
+                        <div class="path-card">
+                            ${path.map((node, i) => `
+                                <span class="path-node">${node}</span>
+                                ${i < path.length - 1 ? `<span class="path-arrow">➜</span>` : ''}
+                            `).join('')}
                         </div>
                     `).join('');
                 } else {
-                    pathsDiv.innerHTML = '<span class="empty">✅ No attack paths found.</span>';
+                    pathsDiv.innerHTML = `<div class="empty-state">✅ No attack paths found.</div>`;
                 }
 
-                // Charts
+                // ─── Charts ───
                 const ctx1 = document.getElementById('trendChart').getContext('2d');
                 const ctx2 = document.getElementById('severityChart').getContext('2d');
 
@@ -2062,14 +2694,14 @@ DASHBOARD_HTML = """
                         labels: ['Critical', 'High', 'Medium', 'Low', 'Info'],
                         datasets: [{
                             data: [sevCounts.CRITICAL, sevCounts.HIGH, sevCounts.MEDIUM, sevCounts.LOW, sevCounts.INFO],
-                            backgroundColor: ['#ff4757', '#ffa502', '#eccc68', '#2ed573', '#8ba0b8'],
-                            borderColor: '#0a0e17',
+                            backgroundColor: ['#ef4444', '#f59e0b', '#eab308', '#34d399', '#94a3b8'],
+                            borderColor: '#000000',
                             borderWidth: 3
                         }]
                     },
-                    options: { 
-                        responsive: true, 
-                        plugins: { legend: { labels: { color: '#e0e6ed' } } },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { labels: { color: '#e2e8f0' } } },
                         animation: { animateRotate: true, duration: 1000 }
                     }
                 });
@@ -2077,6 +2709,7 @@ DASHBOARD_HTML = """
                 let labels = data.scans.map(s => s[0].slice(0, 10)).reverse();
                 let counts = data.scans.map(s => s[3]).reverse();
                 if (labels.length === 0) { labels = ['No Data']; counts = [0]; }
+
                 window.trendChart = new Chart(ctx1, {
                     type: 'line',
                     data: {
@@ -2084,16 +2717,19 @@ DASHBOARD_HTML = """
                         datasets: [{
                             label: 'Findings',
                             data: counts,
-                            borderColor: '#00d4ff',
-                            backgroundColor: 'rgba(0,212,255,0.1)',
+                            borderColor: '#2563eb',
+                            backgroundColor: 'rgba(37,99,235,0.1)',
                             fill: true,
                             tension: 0.3
                         }]
                     },
                     options: {
                         responsive: true,
-                        plugins: { legend: { labels: { color: '#e0e6ed' } } },
-                        scales: { x: { ticks: { color: '#8ba0b8' } }, y: { ticks: { color: '#8ba0b8' } } },
+                        plugins: { legend: { labels: { color: '#e2e8f0' } } },
+                        scales: {
+                            x: { ticks: { color: '#94a3b8' } },
+                            y: { ticks: { color: '#94a3b8' } }
+                        },
                         animation: { duration: 800 }
                     }
                 });
@@ -2104,28 +2740,44 @@ DASHBOARD_HTML = """
 
             } catch (e) {
                 console.error('Error loading data:', e);
+                addLog('Failed to load dashboard data.', 'error');
             }
         }
 
+        function calculateRiskScore(alerts) {
+            if (!alerts || alerts.length === 0) return 95;
+            let score = 100;
+            alerts.forEach(a => {
+                const sev = a[2];
+                if (sev === 'CRITICAL') score -= 15;
+                else if (sev === 'HIGH') score -= 8;
+                else if (sev === 'MEDIUM') score -= 4;
+                else if (sev === 'LOW') score -= 2;
+            });
+            return Math.max(0, Math.min(100, score));
+        }
+
+        // ─── Scan Now (default) ───
         let scanInProgress = false;
 
         async function startScan() {
             if (scanInProgress) return;
             scanInProgress = true;
             document.getElementById('scanBtn').disabled = true;
-            document.getElementById('scanSpinner').innerHTML = '<div class="scan-loading"></div>';
+            document.getElementById('scanSpinner').innerHTML = '<div style="display:inline-block; width:16px; height:16px; border:2px solid #94a3b8; border-top-color:#2563eb; border-radius:50%; animation: spin 0.8s linear infinite; margin-left:10px; vertical-align:middle;"></div>';
+            addLog('Starting default scan on example.com:80,443...', 'info');
 
             try {
                 const res = await fetch('/scan', { method: 'POST' });
                 const result = await res.json();
                 if (result.status === 'ok') {
-                    alert('Scan completed successfully! Results will refresh.');
+                    addLog('✅ Scan completed successfully!', 'success');
                     loadData();
                 } else {
-                    alert('Scan failed: ' + (result.message || 'Unknown error'));
+                    addLog('❌ Scan failed: ' + (result.message || 'Unknown error'), 'error');
                 }
             } catch (e) {
-                alert('Error starting scan: ' + e.message);
+                addLog('❌ Error: ' + e.message, 'error');
             } finally {
                 document.getElementById('scanBtn').disabled = false;
                 document.getElementById('scanSpinner').innerHTML = '';
@@ -2133,9 +2785,15 @@ DASHBOARD_HTML = """
             }
         }
 
+        // ─── AI Chat ───
         function toggleAI() {
-            const chat = document.getElementById('aiChat');
-            chat.classList.toggle('open');
+            const overlay = document.getElementById('aiChatOverlay');
+            overlay.classList.toggle('open');
+            if (overlay.classList.contains('open')) {
+                overlay.style.display = 'flex';
+            } else {
+                overlay.style.display = 'none';
+            }
         }
 
         async function sendAI() {
@@ -2170,9 +2828,216 @@ DASHBOARD_HTML = """
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
+        async function quickAsk() {
+            const input = document.getElementById('quickAIInput');
+            const msg = input.value.trim();
+            if (!msg) return;
+            input.value = '';
+            // Open AI panel if closed
+            const overlay = document.getElementById('aiChatOverlay');
+            if (!overlay.classList.contains('open')) {
+                overlay.classList.add('open');
+                overlay.style.display = 'flex';
+            }
+            document.getElementById('aiInput').value = msg;
+            await sendAI();
+        }
+
+        // ─── Init ───
         loadData();
         setInterval(loadData, 30000);
+
+        // Spinner animation style (inject)
+        const style = document.createElement('style');
+        style.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
+        document.head.appendChild(style);
     </script>
+</body>
+</html>
+"""
+
+# ---------- LOGIN AND SIGNUP HTML (keep as before) ----------
+LOGIN_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Aegis – Login</title>
+    <style>
+        body { background: #000000; color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-box { background: rgba(17, 27, 38, 0.8); backdrop-filter: blur(10px); padding: 40px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); width: 350px; }
+        .login-box h1 { text-align: center; color: #2563eb; margin-bottom: 30px; }
+        .login-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid rgba(255,255,255,0.08); color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
+        .login-box button { width: 100%; padding: 12px; background: #2563eb; color: #fff; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
+        .login-box button:hover { background: #3b82f6; }
+        .login-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
+        .login-box .link { text-align: center; margin-top: 15px; color: #8ba0b8; font-size: 14px; }
+        .login-box .link a { color: #2563eb; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h1>🛡️ Aegis</h1>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST" action="/login">
+            <input type="email" name="email" placeholder="Email" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">Login</button>
+        </form>
+        <div class="link">
+            Don't have an account? <a href="/signup">Sign up</a>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+SIGNUP_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Aegis – Sign Up</title>
+    <style>
+        body { background: #000000; color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .signup-box { background: rgba(17, 27, 38, 0.8); backdrop-filter: blur(10px); padding: 40px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); width: 360px; }
+        .signup-box h1 { text-align: center; color: #2563eb; margin-bottom: 30px; }
+        .signup-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid rgba(255,255,255,0.08); color: #e0e6ed; border-radius: 6px; box-sizing: border-box; }
+        .signup-box button { width: 100%; padding: 12px; background: #2563eb; color: #fff; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
+        .signup-box button:hover { background: #3b82f6; }
+        .signup-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
+        .signup-box .link { text-align: center; margin-top: 15px; color: #8ba0b8; font-size: 14px; }
+        .signup-box .link a { color: #2563eb; text-decoration: none; }
+        .name-row { display: flex; gap: 10px; }
+        .name-row input { flex: 1; }
+    </style>
+</head>
+<body>
+    <div class="signup-box">
+        <h1>🛡️ Aegis</h1>
+        <h3 style="text-align:center; color:#8ba0b8; margin-top:-10px;">Create Account</h3>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST" action="/signup">
+            <div class="name-row">
+                <input type="text" name="first_name" placeholder="First Name" required>
+                <input type="text" name="last_name" placeholder="Last Name" required>
+            </div>
+            <input type="email" name="email" placeholder="Email" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">Sign Up</button>
+        </form>
+        <div class="link">
+            Already have an account? <a href="/login">Login</a>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+OTP_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Aegis – Verify Email</title>
+    <style>
+        body { background: #000000; color: #e0e6ed; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .otp-box { background: rgba(17, 27, 38, 0.8); backdrop-filter: blur(10px); padding: 40px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); width: 350px; }
+        .otp-box h1 { text-align: center; color: #2563eb; margin-bottom: 30px; }
+        .otp-box input { width: 100%; padding: 12px; margin-bottom: 15px; background: #0a0e17; border: 1px solid rgba(255,255,255,0.08); color: #e0e6ed; border-radius: 6px; box-sizing: border-box; text-align: center; font-size: 24px; letter-spacing: 8px; }
+        .otp-box button { width: 100%; padding: 12px; background: #2563eb; color: #fff; font-weight: bold; border: none; border-radius: 6px; cursor: pointer; }
+        .otp-box button:hover { background: #3b82f6; }
+        .otp-box .error { color: #ff4757; text-align: center; margin-bottom: 10px; }
+        .otp-box .info { color: #8ba0b8; text-align: center; margin-bottom: 20px; font-size: 14px; }
+        .otp-box .otp-display { background: #0a0e17; border: 1px solid #34d399; border-radius: 8px; padding: 12px; text-align: center; margin-bottom: 20px; color: #34d399; font-size: 28px; letter-spacing: 6px; font-weight: bold; }
+        .otp-box .resend { text-align: center; margin-top: 15px; color: #8ba0b8; font-size: 14px; }
+        .otp-box .resend a { color: #2563eb; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="otp-box">
+        <h1>📧 Verify Email</h1>
+        <div class="info">We sent a 6‑digit code to <strong>{{ email }}</strong>.</div>
+        <div class="otp-display">🔑 {{ otp }}</div>
+        <div class="info" style="font-size:12px; color:#5a6a7a;">(Copy this code and paste it below)</div>
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        <form method="POST" action="/verify-otp">
+            <input type="hidden" name="email" value="{{ email }}">
+            <input type="text" name="otp" placeholder="6‑digit code" maxlength="6" required autofocus>
+            <button type="submit">Verify Account</button>
+        </form>
+        <div class="resend">
+            Didn't get the code? <a href="/resend-otp?email={{ email }}">Resend OTP</a>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+PRICING_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Aegis – Pricing</title>
+    <style>
+        body { background: #000000; color: #e0e6ed; font-family: Arial, sans-serif; padding: 40px; text-align: center; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        h1 { font-size: 42px; background: linear-gradient(135deg, #2563eb, #60a5fa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; margin-top: 40px; }
+        .card { background: rgba(17, 27, 38, 0.8); backdrop-filter: blur(10px); border-radius: 12px; padding: 30px; border: 1px solid rgba(255,255,255,0.08); }
+        .card.popular { border-color: #2563eb; }
+        .card .plan { font-size: 24px; font-weight: 700; }
+        .card .price { font-size: 36px; color: #2563eb; margin: 15px 0; }
+        .card ul { list-style: none; padding: 0; text-align: left; }
+        .card ul li { padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.06); color: #8ba0b8; }
+        .card ul li:before { content: "✅ "; color: #34d399; }
+        .btn { display: inline-block; background: #2563eb; color: #fff; padding: 10px 30px; border-radius: 30px; font-weight: 600; margin-top: 20px; text-decoration: none; }
+        .btn:hover { background: #3b82f6; }
+        @media (max-width: 768px) { .pricing-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Choose Your Plan</h1>
+        <p style="color:#8ba0b8;">Start free. Scale with confidence.</p>
+        <div class="pricing-grid">
+            <div class="card">
+                <div class="plan">Free</div>
+                <div class="price">$0</div>
+                <ul>
+                    <li>1 cloud account</li>
+                    <li>Manual scans</li>
+                    <li>Community support</li>
+                </ul>
+                <a href="/signup" class="btn">Get Started</a>
+            </div>
+            <div class="card popular">
+                <div class="plan">Pro</div>
+                <div class="price">$500 <span style="font-size:16px;color:#8ba0b8;">/ mo</span></div>
+                <ul>
+                    <li>10 cloud accounts</li>
+                    <li>Auto‑fix</li>
+                    <li>Slack alerts</li>
+                    <li>Priority support</li>
+                </ul>
+                <a href="/signup" class="btn">Start Trial</a>
+            </div>
+            <div class="card">
+                <div class="plan">Enterprise</div>
+                <div class="price">Custom</div>
+                <ul>
+                    <li>Unlimited accounts</li>
+                    <li>24/7 support</li>
+                    <li>Dedicated deployment</li>
+                </ul>
+                <a href="/signup" class="btn">Contact Sales</a>
+            </div>
+        </div>
+        <p style="margin-top:40px;"><a href="/" style="color:#2563eb;">← Back to home</a></p>
+    </div>
 </body>
 </html>
 """
@@ -2200,18 +3065,16 @@ if FLASK_AVAILABLE:
             password = request.form['password']
             conn = sqlite3.connect(DB_NAME)
             c = conn.cursor()
-            c.execute("SELECT * FROM users WHERE email = ?", (email,))
+            c.execute("SELECT * FROM users WHERE email = ? AND verified = 1", (email,))
             user = c.fetchone()
             conn.close()
             if user and check_password_hash(user[2], password):
                 session['user_id'] = user[0]
                 session['email'] = user[1]
                 session['company'] = user[3]
-                session['first_name'] = user[4]
-                session['last_name'] = user[5]
                 return redirect('/dashboard')
             else:
-                return render_template_string(LOGIN_HTML, error="Invalid email or password")
+                return render_template_string(LOGIN_HTML, error="Invalid email or account not verified")
         return render_template_string(LOGIN_HTML, error=None)
 
     @app.route('/signup', methods=['GET', 'POST'])
@@ -2221,72 +3084,59 @@ if FLASK_AVAILABLE:
             last_name = request.form['last_name']
             email = request.form['email']
             password = generate_password_hash(request.form['password'])
-            try:
-                conn = sqlite3.connect(DB_NAME)
-                c = conn.cursor()
-                c.execute("INSERT INTO users (email, password, company, first_name, last_name, created_at, verified) VALUES (?, ?, ?, ?, ?, datetime('now'), 0)",
-                          (email, password, email.split('@')[0], first_name, last_name))
-                conn.commit()
+
+            conn = sqlite3.connect(DB_NAME)
+            c = conn.cursor()
+            c.execute("SELECT * FROM users WHERE email = ?", (email,))
+            existing = c.fetchone()
+            if existing:
                 conn.close()
-                # Generate OTP and store
-                otp = generate_otp()
-                pending_users[email] = {'otp': otp, 'timestamp': datetime.datetime.now()}
-                send_otp_email(email, otp)
-                # Show OTP page
-                return render_template_string(OTP_HTML, email=email, otp=otp, error=None)
-            except sqlite3.IntegrityError:
-                return render_template_string(SIGNUP_HTML, error="Email already exists.")
+                return render_template_string(SIGNUP_HTML, error="Email already registered.")
+
+            # Generate OTP
+            otp = generate_otp()
+            company = f"{first_name} {last_name}"
+            pending_users[email] = {
+                'company': company,
+                'first_name': first_name,
+                'last_name': last_name,
+                'password': password,
+                'otp': otp,
+                'expiry': datetime.datetime.now() + datetime.timedelta(minutes=10)
+            }
+            conn.close()
+
+            # Send OTP (print to console / logs)
+            send_otp_email(email, otp)
+
+            # Render OTP page WITH the OTP visible (for demo)
+            return render_template_string(OTP_HTML, email=email, error=None, otp=otp)
         return render_template_string(SIGNUP_HTML, error=None)
 
     @app.route('/verify-otp', methods=['POST'])
     def verify_otp():
+        otp = request.form['otp']
         email = request.form.get('email')
-        otp = request.form.get('otp')
-
-        if not email or not otp:
-            return render_template_string(OTP_HTML, email="", otp="", error="Missing email or OTP.")
-
-        # Check if email exists in pending_users
+        if not email:
+            return render_template_string(OTP_HTML, email="", otp="", error="Missing email.")
         if email not in pending_users:
-            return render_template_string(OTP_HTML, email=email, otp="", error="OTP expired. Please request a new one.")
-
-        stored_data = pending_users[email]
-        stored_otp = stored_data['otp']
-        timestamp = stored_data['timestamp']
-
-        # Check if OTP is expired (5 minutes)
-        if (datetime.datetime.now() - timestamp).seconds > 300:
+            return render_template_string(OTP_HTML, email=email, otp="", error="OTP expired or not found.")
+        data = pending_users[email]
+        if data['otp'] != otp:
+            return render_template_string(OTP_HTML, email=email, otp="", error="Invalid OTP.")
+        if datetime.datetime.now() > data['expiry']:
             del pending_users[email]
-            return render_template_string(OTP_HTML, email=email, otp="", error="OTP expired. Please request a new one.")
-
-        if otp != stored_otp:
-            return render_template_string(OTP_HTML, email=email, otp="", error="Invalid OTP. Please try again.")
-
-        # OTP is correct – verify user in database
+            return render_template_string(OTP_HTML, email=email, otp="", error="OTP expired.")
+        # OTP correct -> create user
         conn = sqlite3.connect(DB_NAME)
         c = conn.cursor()
-        c.execute("UPDATE users SET verified = 1 WHERE email = ?", (email,))
+        c.execute("""
+            INSERT INTO users (email, password, company, first_name, last_name, created_at, verified)
+            VALUES (?, ?, ?, ?, ?, datetime('now'), 1)
+        """, (email, data['password'], data['company'], data['first_name'], data['last_name']))
         conn.commit()
         conn.close()
-
-        # Remove from pending
         del pending_users[email]
-
-        # Log the user in
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT * FROM users WHERE email = ?", (email,))
-        user = c.fetchone()
-        conn.close()
-
-        if user:
-            session['user_id'] = user[0]
-            session['email'] = user[1]
-            session['company'] = user[3]
-            session['first_name'] = user[4]
-            session['last_name'] = user[5]
-            return redirect('/dashboard')
-
         return redirect('/login')
 
     @app.route('/resend-otp')
@@ -2294,23 +3144,14 @@ if FLASK_AVAILABLE:
         email = request.args.get('email')
         if not email:
             return "No email provided."
-
-        # Check if user exists in database
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT * FROM users WHERE email = ?", (email,))
-        user = c.fetchone()
-        conn.close()
-
-        if not user:
-            return "Email not registered. Please sign up first."
-
-        # Generate new OTP
+        if email not in pending_users:
+            return "Email not found or OTP expired. Please sign up again."
+        # Resend OTP
         otp = generate_otp()
-        pending_users[email] = {'otp': otp, 'timestamp': datetime.datetime.now()}
+        pending_users[email]['otp'] = otp
+        pending_users[email]['expiry'] = datetime.datetime.now() + datetime.timedelta(minutes=10)
         send_otp_email(email, otp)
-
-        return render_template_string(OTP_HTML, email=email, otp=otp, error="New OTP sent. Check your email or console.")
+        return render_template_string(OTP_HTML, email=email, otp=otp, error="New OTP sent.")
 
     @app.route('/logout')
     def logout():
@@ -2389,11 +3230,27 @@ if FLASK_AVAILABLE:
     @app.route('/scan', methods=['POST'])
     def trigger_scan():
         try:
-            open_services = scan_host("example.com", [80,443])
+            data = request.get_json()
+            if data:
+                target = data.get('target', 'example.com')
+                ports_str = data.get('ports', '80,443')
+                # Parse ports
+                ports = []
+                for part in ports_str.split(','):
+                    if '-' in part:
+                        s, e = map(int, part.split('-'))
+                        ports.extend(range(s, e+1))
+                    else:
+                        ports.append(int(part))
+            else:
+                target = 'example.com'
+                ports = [80, 443]
+
+            open_services = scan_host(target, ports)
             findings = []
             if open_services:
-                save_scan("example.com", "web", "default", open_services, findings)
-            return jsonify({'status': 'ok', 'message': f'Scan completed, found {len(open_services)} open ports.'})
+                save_scan(target, 'web', 'default', open_services, findings)
+            return jsonify({'status': 'ok', 'message': f'Scan completed on {target}, found {len(open_services)} open ports.'})
         except Exception as e:
             return jsonify({'status': 'error', 'message': str(e)})
 
