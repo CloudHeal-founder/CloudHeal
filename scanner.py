@@ -1421,285 +1421,415 @@ LANDING_PAGE_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aegis – Self‑Healing Cloud Security</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aegis – Autonomous Cloud Security</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-        body { background: #050a12; color: #e0e6ed; overflow-x: hidden; }
-        a { text-decoration: none; color: inherit; }
+        * { font-family: 'Inter', sans-serif; }
+        body { background: #000000; color: #ffffff; }
 
-        .bg-animation { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; overflow: hidden; background: radial-gradient(ellipse at 20% 50%, #0d1b2a 0%, #050a12 100%); }
-        .bg-animation .glow { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.3; }
-        .bg-animation .glow:nth-child(1) { width: 600px; height: 600px; top: -200px; left: -200px; background: #00d4ff; animation: float 25s infinite; }
-        .bg-animation .glow:nth-child(2) { width: 500px; height: 500px; bottom: -200px; right: -200px; background: #7b2ffc; animation: float 30s infinite reverse; }
-        @keyframes float { 0% { transform: translate(0,0) scale(1); } 50% { transform: translate(40px, -40px) scale(1.1); } 100% { transform: translate(-20px, 20px) scale(1); } }
+        .plasma {
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background:
+                radial-gradient(circle at 15% 20%, rgba(37,99,235,0.2) 0%, transparent 40%),
+                radial-gradient(circle at 85% 30%, rgba(59,130,246,0.15) 0%, transparent 35%),
+                radial-gradient(circle at 50% 85%, rgba(37,99,235,0.1) 0%, transparent 40%);
+            filter: blur(120px);
+        }
 
-        .container { max-width: 1400px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1; }
-        nav { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; flex-wrap: wrap; }
-        .logo { font-size: 28px; font-weight: 700; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .nav-links { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
-        .nav-links a { color: #8ba0b8; font-size: 14px; transition: 0.2s; }
-        .nav-links a:hover { color: #e0e6ed; }
-        .nav-cta { background: #00d4ff; color: #0a0e17 !important; padding: 8px 20px; border-radius: 30px; font-weight: 600; }
-        .nav-cta:hover { background: #7b2ffc; color: #fff !important; }
+        .glass {
+            background: rgba(255,255,255,0.03);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
 
-        .hero { display: flex; align-items: center; justify-content: space-between; padding: 60px 0; gap: 60px; min-height: 70vh; }
-        .hero-content { flex: 1; }
-        .hero-content h1 { font-size: 52px; font-weight: 700; line-height: 1.1; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 20px; }
-        .hero-content p { font-size: 20px; color: #8ba0b8; max-width: 550px; margin-bottom: 30px; line-height: 1.6; }
-        .hero-buttons { display: flex; gap: 15px; flex-wrap: wrap; }
-        .btn-primary { background: #00d4ff; color: #0a0e17; padding: 14px 32px; border-radius: 30px; font-weight: 700; border: none; cursor: pointer; font-size: 16px; transition: 0.2s; display: inline-block; }
-        .btn-primary:hover { background: #7b2ffc; color: #fff; }
-        .btn-secondary { background: transparent; border: 1px solid #1e2a3a; color: #e0e6ed; padding: 14px 32px; border-radius: 30px; font-weight: 600; cursor: pointer; transition: 0.2s; display: inline-block; }
-        .btn-secondary:hover { border-color: #00d4ff; color: #00d4ff; }
-        .hero-image { flex: 1; background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 16px; padding: 40px; border: 1px solid #1e2a3a; text-align: center; min-height: 300px; display: flex; align-items: center; justify-content: center; flex-direction: column; }
-        .hero-image .placeholder-icon { font-size: 80px; margin-bottom: 20px; animation: pulse 2s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
-        .hero-image p { color: #8ba0b8; font-size: 16px; }
+        .glass-card {
+            background: rgba(255,255,255,0.02);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255,255,255,0.06);
+            transition: all 0.3s ease;
+        }
+        .glass-card:hover {
+            border-color: #2563eb;
+            transform: translateY(-6px);
+            box-shadow: 0 20px 60px rgba(37,99,235,0.15);
+        }
 
-        .trust-bar { padding: 30px 0; border-top: 1px solid #1e2a3a; border-bottom: 1px solid #1e2a3a; text-align: center; margin: 20px 0; }
-        .trust-bar p { color: #5a6a7a; font-size: 14px; letter-spacing: 1px; margin-bottom: 15px; }
-        .trust-logos { display: flex; justify-content: center; flex-wrap: wrap; gap: 40px; }
-        .trust-logos span { color: #8ba0b8; font-size: 18px; font-weight: 500; opacity: 0.7; transition: 0.2s; }
-        .trust-logos span:hover { opacity: 1; }
+        .hero-gradient {
+            background: linear-gradient(135deg, #2563eb 0%, #3b82f6 50%, #60a5fa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
 
-        .features { padding: 80px 0; }
-        .features h2 { text-align: center; font-size: 36px; margin-bottom: 50px; }
-        .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; }
-        .feature-card { background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 12px; padding: 30px; border: 1px solid #1e2a3a; transition: 0.3s; }
-        .feature-card:hover { border-color: #00d4ff; transform: translateY(-5px); }
-        .feature-card .icon { font-size: 40px; margin-bottom: 15px; }
-        .feature-card h3 { font-size: 20px; margin-bottom: 10px; }
-        .feature-card p { color: #8ba0b8; font-size: 14px; line-height: 1.6; }
+        .btn-primary {
+            background: #2563eb;
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 40px rgba(37,99,235,0.4);
+        }
 
-        .pricing { padding: 80px 0; }
-        .pricing h2 { text-align: center; font-size: 36px; margin-bottom: 20px; }
-        .pricing .sub { text-align: center; color: #8ba0b8; margin-bottom: 50px; font-size: 18px; }
-        .pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 30px; }
-        .pricing-card { background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 12px; padding: 30px; border: 1px solid #1e2a3a; transition: 0.3s; text-align: center; }
-        .pricing-card:hover { border-color: #00d4ff; transform: translateY(-5px); }
-        .pricing-card.popular { border-color: #00d4ff; }
-        .pricing-card .plan { font-size: 22px; font-weight: 700; margin-bottom: 10px; }
-        .pricing-card .price { font-size: 36px; font-weight: 700; color: #00d4ff; margin-bottom: 20px; }
-        .pricing-card .price span { font-size: 16px; color: #8ba0b8; }
-        .pricing-card ul { list-style: none; text-align: left; padding: 0; margin: 20px 0; }
-        .pricing-card ul li { padding: 8px 0; border-bottom: 1px solid #1e2a3a; color: #8ba0b8; font-size: 14px; }
-        .pricing-card ul li:before { content: "✅ "; color: #2ed573; }
-        .pricing-card .btn { background: #00d4ff; color: #0a0e17; padding: 10px 30px; border-radius: 30px; font-weight: 600; display: inline-block; transition: 0.2s; }
-        .pricing-card .btn:hover { background: #7b2ffc; color: #fff; }
+        .btn-secondary {
+            border: 1px solid rgba(255,255,255,0.15);
+            transition: all 0.3s ease;
+        }
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.05);
+            border-color: #2563eb;
+        }
 
-        .cta-section { padding: 80px 0; text-align: center; background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 16px; border: 1px solid #1e2a3a; margin: 40px 0; }
-        .cta-section h2 { font-size: 36px; margin-bottom: 15px; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .cta-section p { color: #8ba0b8; font-size: 18px; margin-bottom: 30px; }
+        .pricing-popular {
+            border-color: #2563eb;
+            background: rgba(37,99,235,0.06);
+        }
 
-        footer { padding: 30px 0; border-top: 1px solid #1e2a3a; text-align: center; color: #5a6a7a; font-size: 14px; }
-        footer a { color: #8ba0b8; margin: 0 15px; }
-        footer a:hover { color: #e0e6ed; }
+        .trust-item {
+            opacity: 0.6;
+            transition: all 0.3s ease;
+        }
+        .trust-item:hover { opacity: 1; }
+
+        html { scroll-behavior: smooth; }
 
         @media (max-width: 768px) {
-            .hero { flex-direction: column; text-align: center; padding: 40px 0; }
-            .hero-content h1 { font-size: 36px; }
-            .hero-content p { margin: 0 auto 30px; }
-            .hero-buttons { justify-content: center; }
-            .hero-image { min-height: 200px; }
-            .features { padding: 40px 0; }
-            .pricing { padding: 40px 0; }
-            .trust-logos { gap: 20px; }
-            .trust-logos span { font-size: 14px; }
+            .hero-text h1 { font-size: 2.5rem; }
         }
     </style>
 </head>
 <body>
-    <div class="bg-animation">
-        <div class="glow"></div>
-        <div class="glow"></div>
-    </div>
-    <div class="container">
-        <nav>
-            <div class="logo">🛡️ Aegis</div>
-            <div class="nav-links">
-                <a href="#features">Features</a>
-                <a href="#pricing">Pricing</a>
-                <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank">GitHub</a>
-                <a href="/login" class="nav-cta">Login</a>
-            </div>
-        </nav>
-        <section class="hero">
-            <div class="hero-content">
-                <h1>Self‑Healing Cloud Security</h1>
-                <p>
-                    Aegis is the first open‑source, four‑cloud security platform that
-                    <strong>automatically detects and fixes</strong> attack chains across
-                    AWS, GCP, Azure, and OCI.
-                </p>
-                <div class="hero-buttons">
-                    <a href="/signup" class="btn-primary">Get Started Free →</a>
-                    <a href="#features" class="btn-secondary">Learn More</a>
-                </div>
-            </div>
-            <div class="hero-image">
-                <div class="placeholder-icon">🛡️</div>
-                <p>Live dashboard • Attack path graphs • Auto‑fix</p>
-                <p style="font-size: 13px; color: #5a6a7a; margin-top: 10px;">⬇️ 4 clouds, 1 command</p>
-            </div>
-        </section>
-        <div class="trust-bar">
-            <p>TRUSTED BY TEAMS BUILDING THE FUTURE</p>
-            <div class="trust-logos">
-                <span>🏢 Startups</span>
-                <span>🔒 Enterprises</span>
-                <span>☁️ Cloud‑Native</span>
-                <span>🧠 AI‑Driven</span>
-                <span>🌍 Global</span>
-            </div>
-        </div>
-        <section class="features" id="features">
-            <h2>Why Aegis?</h2>
-            <div class="feature-grid">
-                <div class="feature-card">
-                    <div class="icon">☁️</div>
-                    <h3>Four‑Cloud Coverage</h3>
-                    <p>Scan AWS, GCP, Azure, and OCI in one command – no other open‑source tool does this.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="icon">🔗</div>
-                    <h3>Attack Path Graphs</h3>
-                    <p>See exactly how an attacker would move from the internet to your sensitive data.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="icon">🛡️</div>
-                    <h3>Auto‑Fix the Chain</h3>
-                    <p>Not just alerts – Aegis breaks the entire attack path by fixing S3, SGs, EC2, and IAM.</p>
-                </div>
-                <div class="feature-card">
-                    <div class="icon">📊</div>
-                    <h3>Live Dashboard</h3>
-                    <p>Real‑time monitoring with alerts, scan history, and attack path visualisation.</p>
-                </div>
-            </div>
-        </section>
-        <section class="pricing" id="pricing">
-            <h2>Simple, Transparent Pricing</h2>
-            <p class="sub">Start free, scale as you grow.</p>
-            <div class="pricing-grid">
-                <div class="pricing-card">
-                    <div class="plan">Free</div>
-                    <div class="price">$0</div>
-                    <ul>
-                        <li>1 cloud account</li>
-                        <li>Manual scans</li>
-                        <li>Community support</li>
-                        <li>Basic dashboard</li>
-                    </ul>
-                    <a href="/signup" class="btn">Get Started</a>
-                </div>
-                <div class="pricing-card popular">
-                    <div class="plan">Pro</div>
-                    <div class="price">$500 <span>/ month</span></div>
-                    <ul>
-                        <li>10 cloud accounts</li>
-                        <li>Auto‑fix</li>
-                        <li>Slack alerts</li>
-                        <li>Priority support</li>
-                        <li>1‑year history</li>
-                    </ul>
-                    <a href="/signup" class="btn">Start Trial</a>
-                </div>
-                <div class="pricing-card">
-                    <div class="plan">Enterprise</div>
-                    <div class="price">Custom</div>
-                    <ul>
-                        <li>Unlimited accounts</li>
-                        <li>24/7 support</li>
-                        <li>Dedicated deployment</li>
-                        <li>Custom compliance</li>
-                        <li>SSO & RBAC</li>
-                    </ul>
-                    <a href="/signup" class="btn">Contact Sales</a>
-                </div>
-            </div>
-        </section>
-        <section class="cta-section">
-            <h2>Ready to secure your cloud?</h2>
-            <p>Join the future of open‑source, self‑healing cloud security.</p>
-            <a href="/signup" class="btn-primary">Get Started – It’s Free</a>
-        </section>
-        <footer>
-            <p>
-                <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank">GitHub</a>
-                <a href="/login">Login</a>
-                <a href="/pricing">Pricing</a>
-                <a href="#">Privacy</a>
-            </p>
-            <p style="margin-top: 10px; font-size: 12px;">© 2026 Aegis – Built by Austin Emmanuel</p>
-        </footer>
-    </div>
-</body>
-</html>
-"""
 
-PRICING_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Aegis – Pricing</title>
-    <style>
-        body { background: radial-gradient(ellipse at 50% 50%, #0d1b2a 0%, #050a12 100%); color: #e0e6ed; font-family: Arial, sans-serif; padding: 40px; text-align: center; }
-        .container { max-width: 1000px; margin: 0 auto; }
-        h1 { font-size: 42px; background: linear-gradient(135deg, #00d4ff, #7b2ffc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; margin-top: 40px; }
-        .card { background: rgba(17, 27, 38, 0.5); backdrop-filter: blur(6px); border-radius: 12px; padding: 30px; border: 1px solid #1e2a3a; }
-        .card.popular { border-color: #00d4ff; }
-        .card .plan { font-size: 24px; font-weight: 700; }
-        .card .price { font-size: 36px; color: #00d4ff; margin: 15px 0; }
-        .card ul { list-style: none; padding: 0; text-align: left; }
-        .card ul li { padding: 8px 0; border-bottom: 1px solid #1e2a3a; color: #8ba0b8; }
-        .card ul li:before { content: "✅ "; color: #2ed573; }
-        .btn { display: inline-block; background: #00d4ff; color: #0a0e17; padding: 10px 30px; border-radius: 30px; font-weight: 600; margin-top: 20px; text-decoration: none; }
-        .btn:hover { background: #7b2ffc; color: #fff; }
-        @media (max-width: 768px) { .pricing-grid { grid-template-columns: 1fr; } }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>Choose Your Plan</h1>
-        <p style="color:#8ba0b8;">Start free. Scale with confidence.</p>
-        <div class="pricing-grid">
-            <div class="card">
-                <div class="plan">Free</div>
-                <div class="price">$0</div>
-                <ul>
-                    <li>1 cloud account</li>
-                    <li>Manual scans</li>
-                    <li>Community support</li>
-                </ul>
-                <a href="/signup" class="btn">Get Started</a>
+    <div class="plasma"></div>
+
+    <!-- ─── NAVBAR ─── -->
+    <nav class="flex items-center justify-between px-6 md:px-10 lg:px-16 py-5 border-b border-white/5 max-w-7xl mx-auto">
+        <div class="flex items-center gap-2">
+            <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-500/20">
+                🛡️
             </div>
-            <div class="card popular">
-                <div class="plan">Pro</div>
-                <div class="price">$500 <span style="font-size:16px;color:#8ba0b8;">/ mo</span></div>
-                <ul>
-                    <li>10 cloud accounts</li>
-                    <li>Auto‑fix</li>
-                    <li>Slack alerts</li>
-                    <li>Priority support</li>
-                </ul>
-                <a href="/signup" class="btn">Start Trial</a>
+            <span class="text-2xl font-bold text-white">
+                Aegis
+            </span>
+            <span class="text-xs font-medium text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20 hidden sm:inline">
+                APCSS
+            </span>
+        </div>
+        <div class="flex items-center gap-6 text-sm">
+            <a href="#about" class="text-slate-400 hover:text-white transition hidden md:block">
+                <i class="fas fa-info-circle mr-1"></i> About
+            </a>
+            <a href="#features" class="text-slate-400 hover:text-white transition hidden md:block">Features</a>
+            <a href="#pricing" class="text-slate-400 hover:text-white transition hidden md:block">Pricing</a>
+            <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank" class="text-slate-400 hover:text-white transition hidden md:block">
+                <i class="fab fa-github"></i>
+            </a>
+            <a href="/login" class="text-white font-medium hover:text-blue-400 transition">Login</a>
+            <a href="/signup" class="btn-primary text-white px-5 py-2.5 rounded-full text-sm font-semibold shadow-lg shadow-blue-500/20">
+                Get Started
+            </a>
+        </div>
+    </nav>
+
+    <!-- ─── HERO ─── -->
+    <section class="flex flex-col lg:flex-row items-center gap-12 px-6 md:px-10 lg:px-16 py-16 lg:py-24 max-w-7xl mx-auto">
+        <div class="flex-1 text-center lg:text-left">
+            <div class="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 px-4 py-1.5 rounded-full text-sm text-blue-400 font-medium mb-6">
+                <span class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
+                Next‑Gen Cloud Security
             </div>
-            <div class="card">
-                <div class="plan">Enterprise</div>
-                <div class="price">Custom</div>
-                <ul>
-                    <li>Unlimited accounts</li>
-                    <li>24/7 support</li>
-                    <li>Dedicated deployment</li>
-                </ul>
-                <a href="/signup" class="btn">Contact Sales</a>
+            <h1 class="hero-text text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-[1.1] tracking-tight">
+                Secure Your<br />
+                <span class="hero-gradient">Entire Cloud</span><br />
+                From One Platform
+            </h1>
+            <p class="text-slate-400 text-lg md:text-xl max-w-2xl mx-auto lg:mx-0 mt-6 leading-relaxed">
+                Discover attack paths, misconfigurations, exposed assets, and cloud risks
+                across <span class="text-white font-medium">AWS</span>,
+                <span class="text-white font-medium">Azure</span>,
+                <span class="text-white font-medium">GCP</span> &amp;
+                <span class="text-white font-medium">OCI</span> – in real time.
+            </p>
+            <div class="flex flex-wrap items-center justify-center lg:justify-start gap-4 mt-8">
+                <a href="/signup" class="btn-primary text-white px-8 py-3.5 rounded-full font-semibold text-base shadow-lg shadow-blue-500/25">
+                    Start Free <i class="fas fa-arrow-right ml-2 text-sm"></i>
+                </a>
+                <a href="#about" class="btn-secondary text-white px-8 py-3.5 rounded-full font-medium text-base">
+                    Learn More
+                </a>
+            </div>
+            <div class="flex flex-wrap items-center justify-center lg:justify-start gap-3 mt-8">
+                <span class="text-xs text-slate-500 uppercase tracking-wider font-semibold">Supported:</span>
+                <span class="bg-white/5 border border-white/10 px-3 py-1 rounded-full text-sm text-slate-300 font-medium">AWS ✓</span>
+                <span class="bg-white/5 border border-white/10 px-3 py-1 rounded-full text-sm text-slate-300 font-medium">Azure ✓</span>
+                <span class="bg-white/5 border border-white/10 px-3 py-1 rounded-full text-sm text-slate-300 font-medium">GCP ✓</span>
+                <span class="bg-white/5 border border-white/10 px-3 py-1 rounded-full text-sm text-slate-300 font-medium">OCI ✓</span>
             </div>
         </div>
-        <p style="margin-top:40px;"><a href="/" style="color:#00d4ff;">← Back to home</a></p>
+
+        <!-- Hero Visual -->
+        <div class="flex-1 w-full glass rounded-3xl p-8 md:p-10 border-white/10 shadow-2xl">
+            <div class="flex flex-col items-center gap-4 max-w-sm mx-auto">
+                <div class="w-full bg-slate-900/50 rounded-2xl p-5 border border-white/5">
+                    <div class="flex flex-wrap items-center justify-center gap-3 text-sm">
+                        <span class="text-slate-400">🌐 Internet</span>
+                        <span class="text-blue-400">→</span>
+                        <span class="text-red-400 font-medium">🛡️ Public VM</span>
+                        <span class="text-blue-400">→</span>
+                        <span class="text-amber-400 font-medium">🔑 IAM Role</span>
+                        <span class="text-blue-400">→</span>
+                        <span class="text-emerald-400 font-medium">📦 S3 Bucket</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-6 bg-slate-900/50 rounded-2xl px-6 py-4 border border-white/5 w-full justify-center">
+                    <span class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-blue-200 bg-clip-text text-transparent">87</span>
+                    <span class="text-slate-400 text-sm font-medium">Risk Score</span>
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="text-emerald-400 text-xs font-medium">Live</span>
+                </div>
+                <p class="text-slate-500 text-xs text-center">Attack path visualization · Auto‑remediation ready</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── TRUST BAR ─── -->
+    <div class="border-y border-white/5 py-10 text-center max-w-7xl mx-auto px-6">
+        <p class="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-5">Trusted by security teams building the future</p>
+        <div class="flex flex-wrap items-center justify-center gap-8 md:gap-12">
+            <span class="trust-item text-slate-400 font-medium text-sm">🏢 Startups</span>
+            <span class="trust-item text-slate-400 font-medium text-sm">🔒 Enterprises</span>
+            <span class="trust-item text-slate-400 font-medium text-sm">☁️ Cloud‑Native</span>
+            <span class="trust-item text-slate-400 font-medium text-sm">🧠 AI‑Driven</span>
+            <span class="trust-item text-slate-400 font-medium text-sm">🌍 Global</span>
+        </div>
     </div>
+
+    <!-- ─── ABOUT AEGIS ─── -->
+    <section id="about" class="py-20 max-w-7xl mx-auto px-6 md:px-10">
+        <h2 class="text-3xl md:text-4xl font-bold text-center">
+            About <span class="hero-gradient">Aegis</span>
+        </h2>
+        <p class="text-slate-400 text-center max-w-3xl mx-auto mt-4 text-lg">
+            The world's first open‑source, self‑healing cloud security platform.
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-10 mt-12">
+            <div class="glass-card rounded-3xl p-8">
+                <div class="text-5xl mb-4">🚀</div>
+                <h3 class="text-2xl font-bold text-white">The Mission</h3>
+                <p class="text-slate-400 mt-4 leading-relaxed">
+                    Aegis was built to democratize cloud security. Commercial tools like
+                    <span class="text-white font-medium">Wiz</span> and
+                    <span class="text-white font-medium">Orca</span> cost millions –
+                    Aegis is <span class="text-emerald-400 font-medium">100% free</span> and open source.
+                </p>
+                <p class="text-slate-400 mt-3 leading-relaxed">
+                    We believe every team, from startups to enterprises, should have
+                    access to world‑class cloud security without the billion‑dollar price tag.
+                </p>
+            </div>
+
+            <div class="glass-card rounded-3xl p-8">
+                <div class="text-5xl mb-4">🧠</div>
+                <h3 class="text-2xl font-bold text-white">What Aegis Does</h3>
+                <ul class="text-slate-400 mt-4 space-y-3">
+                    <li>✓ <span class="text-white">Multi‑Cloud Scanning</span> – AWS, Azure, GCP, OCI</li>
+                    <li>✓ <span class="text-white">Attack Path Analysis</span> – See how attackers move</li>
+                    <li>✓ <span class="text-white">Auto‑Remediation</span> – Fix risks automatically</li>
+                    <li>✓ <span class="text-white">AI Security Copilot</span> – Ask anything about your cloud</li>
+                    <li>✓ <span class="text-white">Compliance Reporting</span> – PCI, HIPAA, SOC2</li>
+                    <li>✓ <span class="text-white">100% Open Source</span> – No vendor lock‑in</li>
+                </ul>
+            </div>
+
+            <div class="glass-card rounded-3xl p-8 md:col-span-2">
+                <div class="flex flex-col md:flex-row items-center gap-6">
+                    <div class="text-5xl">👤</div>
+                    <div>
+                        <h3 class="text-2xl font-bold text-white">Built by Austin Emmanuel</h3>
+                        <p class="text-slate-400 mt-2 leading-relaxed">
+                            Aegis was built by a <span class="text-white font-medium">19‑year‑old founder from Nigeria</span>
+                            who saw that cloud security was locked behind massive paywalls.
+                            This is a platform <span class="text-blue-400 font-medium">by the community, for the community</span>.
+                        </p>
+                        <div class="flex items-center gap-3 mt-4">
+                            <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank" class="text-slate-400 hover:text-white transition text-sm">
+                                <i class="fab fa-github"></i> GitHub
+                            </a>
+                            <span class="text-slate-600">•</span>
+                            <span class="text-slate-500 text-sm">Open Source</span>
+                            <span class="text-slate-600">•</span>
+                            <span class="text-emerald-400 text-sm font-medium">v2.0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── FEATURES ─── -->
+    <section id="features" class="py-20 max-w-7xl mx-auto px-6 md:px-10">
+        <h2 class="text-3xl md:text-4xl font-bold text-center">
+            Built For <span class="hero-gradient">Modern Security Teams</span>
+        </h2>
+        <p class="text-slate-400 text-center max-w-2xl mx-auto mt-4 text-lg">
+            One platform. Complete visibility. Autonomous remediation.
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-12">
+            <div class="glass-card rounded-2xl p-8 text-center">
+                <div class="text-4xl mb-4">🌩️</div>
+                <h3 class="text-xl font-semibold text-white">Multi‑Cloud Visibility</h3>
+                <p class="text-slate-400 text-sm mt-3 leading-relaxed">Unified security across AWS, Azure, GCP and OCI – one platform, one view.</p>
+            </div>
+            <div class="glass-card rounded-2xl p-8 text-center">
+                <div class="text-4xl mb-4">🔗</div>
+                <h3 class="text-xl font-semibold text-white">Attack Path Analysis</h3>
+                <p class="text-slate-400 text-sm mt-3 leading-relaxed">See exactly how an attacker would move from the internet to your sensitive data.</p>
+            </div>
+            <div class="glass-card rounded-2xl p-8 text-center">
+                <div class="text-4xl mb-4">🛠️</div>
+                <h3 class="text-xl font-semibold text-white">Auto‑Remediation</h3>
+                <p class="text-slate-400 text-sm mt-3 leading-relaxed">Not just alerts – Aegis fixes misconfigurations, open ports, and excessive permissions.</p>
+            </div>
+            <div class="glass-card rounded-2xl p-8 text-center">
+                <div class="text-4xl mb-4">🤖</div>
+                <h3 class="text-xl font-semibold text-white">AI Security Copilot</h3>
+                <p class="text-slate-400 text-sm mt-3 leading-relaxed">Ask Aegis AI any security question – get instant, context‑aware answers.</p>
+            </div>
+            <div class="glass-card rounded-2xl p-8 text-center">
+                <div class="text-4xl mb-4">📊</div>
+                <h3 class="text-xl font-semibold text-white">Compliance &amp; Reporting</h3>
+                <p class="text-slate-400 text-sm mt-3 leading-relaxed">Generate PCI‑DSS, HIPAA, SOC2 reports with one click.</p>
+            </div>
+            <div class="glass-card rounded-2xl p-8 text-center">
+                <div class="text-4xl mb-4">🔓</div>
+                <h3 class="text-xl font-semibold text-white">100% Open Source</h3>
+                <p class="text-slate-400 text-sm mt-3 leading-relaxed">No vendor lock‑in. Full transparency. Built by the community.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── DASHBOARD PREVIEW ─── -->
+    <section class="py-16 max-w-7xl mx-auto px-6 md:px-10">
+        <div class="glass rounded-3xl p-8 md:p-12 border-white/10">
+            <h2 class="text-3xl md:text-4xl font-bold text-center">
+                Security <span class="hero-gradient">Command Center</span>
+            </h2>
+            <p class="text-slate-400 text-center max-w-2xl mx-auto mt-4 text-lg">
+                Real‑time visibility, attack paths, and auto‑remediation at a glance.
+            </p>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mt-10">
+                <div class="glass-card rounded-2xl p-6 text-center">
+                    <div class="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-400 to-blue-200 bg-clip-text text-transparent">92</div>
+                    <p class="text-slate-400 text-sm mt-1">🛡️ Security Posture</p>
+                </div>
+                <div class="glass-card rounded-2xl p-6 text-center">
+                    <div class="text-3xl md:text-4xl font-bold text-white">12,481</div>
+                    <p class="text-slate-400 text-sm mt-1">☁️ Assets Protected</p>
+                </div>
+                <div class="glass-card rounded-2xl p-6 text-center">
+                    <div class="text-3xl md:text-4xl font-bold text-amber-400">8</div>
+                    <p class="text-slate-400 text-sm mt-1">🔥 Active Attack Paths</p>
+                </div>
+                <div class="glass-card rounded-2xl p-6 text-center">
+                    <div class="text-3xl md:text-4xl font-bold text-emerald-400">41</div>
+                    <p class="text-slate-400 text-sm mt-1">⚡ Auto‑Remediated</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── PRICING ─── -->
+    <section id="pricing" class="py-20 max-w-7xl mx-auto px-6 md:px-10">
+        <h2 class="text-3xl md:text-4xl font-bold text-center">
+            Simple, <span class="hero-gradient">Transparent</span> Pricing
+        </h2>
+        <p class="text-slate-400 text-center max-w-2xl mx-auto mt-4 text-lg">
+            Start free. Scale as you grow.
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12 max-w-5xl mx-auto">
+            <div class="glass-card rounded-2xl p-8 text-center">
+                <h3 class="text-xl font-semibold text-white">Free</h3>
+                <p class="text-4xl font-bold text-white mt-4">$0</p>
+                <ul class="text-slate-400 text-sm space-y-3 mt-6 text-left">
+                    <li>✓ 1 cloud account</li>
+                    <li>✓ Manual scans</li>
+                    <li>✓ Community support</li>
+                    <li>✓ Basic dashboard</li>
+                </ul>
+                <a href="/signup" class="btn-primary text-white px-6 py-2.5 rounded-full text-sm font-semibold inline-block mt-8 shadow-lg shadow-blue-500/20">
+                    Get Started
+                </a>
+            </div>
+            <div class="glass-card pricing-popular rounded-2xl p-8 text-center border-2">
+                <div class="bg-blue-500/10 text-blue-400 text-xs font-semibold px-3 py-1 rounded-full inline-block mb-4 border border-blue-500/20">Most Popular</div>
+                <h3 class="text-xl font-semibold text-white">Pro</h3>
+                <p class="text-4xl font-bold text-white mt-4">$500 <span class="text-base font-normal text-slate-400">/ month</span></p>
+                <ul class="text-slate-400 text-sm space-y-3 mt-6 text-left">
+                    <li>✓ 10 cloud accounts</li>
+                    <li>✓ Auto‑remediation</li>
+                    <li>✓ Slack alerts</li>
+                    <li>✓ Priority support</li>
+                    <li>✓ 1‑year history</li>
+                </ul>
+                <a href="/signup" class="btn-primary text-white px-6 py-2.5 rounded-full text-sm font-semibold inline-block mt-8 shadow-lg shadow-blue-500/30">
+                    Start Trial
+                </a>
+            </div>
+            <div class="glass-card rounded-2xl p-8 text-center">
+                <h3 class="text-xl font-semibold text-white">Enterprise</h3>
+                <p class="text-4xl font-bold text-white mt-4">Custom</p>
+                <ul class="text-slate-400 text-sm space-y-3 mt-6 text-left">
+                    <li>✓ Unlimited accounts</li>
+                    <li>✓ 24/7 support</li>
+                    <li>✓ Dedicated deployment</li>
+                    <li>✓ Custom compliance</li>
+                    <li>✓ SSO &amp; RBAC</li>
+                </ul>
+                <a href="/signup" class="btn-secondary text-white px-6 py-2.5 rounded-full text-sm font-semibold inline-block mt-8">
+                    Contact Sales
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── CTA ─── -->
+    <section class="py-20 max-w-7xl mx-auto px-6 md:px-10">
+        <div class="glass rounded-3xl p-8 md:p-12 text-center border-white/10">
+            <h2 class="text-3xl md:text-4xl font-bold">
+                Ready to secure <span class="hero-gradient">your cloud</span>?
+            </h2>
+            <p class="text-slate-400 text-lg max-w-2xl mx-auto mt-4">
+                Start securing your AWS, Azure, GCP and OCI infrastructure in minutes.
+            </p>
+            <a href="/signup" class="btn-primary text-white px-10 py-4 rounded-full font-semibold text-lg inline-block mt-8 shadow-lg shadow-blue-500/25">
+                Start Free – No Credit Card
+            </a>
+        </div>
+    </section>
+
+    <!-- ─── FOOTER ─── -->
+    <footer class="border-t border-white/5 py-8 text-center text-slate-500 text-sm max-w-7xl mx-auto px-6">
+        <div class="flex flex-wrap items-center justify-center gap-6 mb-4">
+            <a href="#about" class="text-slate-400 hover:text-white transition">About</a>
+            <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank" class="text-slate-400 hover:text-white transition">
+                <i class="fab fa-github"></i> GitHub
+            </a>
+            <a href="/login" class="text-slate-400 hover:text-white transition">Dashboard</a>
+            <a href="#pricing" class="text-slate-400 hover:text-white transition">Pricing</a>
+        </div>
+        <p class="text-xs text-slate-600">
+            © 2026 Aegis – Built by <span class="text-slate-400 font-medium">Austin Emmanuel</span>
+        </p>
+        <p class="text-xs text-slate-700 mt-1">Open Source · Self‑Healing Cloud Security · v2.0</p>
+    </footer>
+
 </body>
 </html>
 """
