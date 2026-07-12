@@ -3026,41 +3026,77 @@ if FLASK_AVAILABLE:
 
     # ── API ──
     @app.route('/api/data')
-    def api_data():
+def api_data():
+    scans = get_scan_history()
+    alerts = get_alerts(20)
+    
+    # === DEMO DATA SEEDING (for nice dashboard on first visit) ===
+    if len(scans) == 0 and len(alerts) == 0:
+        print("[DEMO] Seeding sample data for dashboard...")
+        
+        # Sample Alerts
+        demo_alerts = [
+            (datetime.datetime.now().isoformat(), "aws", "prod-account", "Public S3 bucket 'customer-data-2025' exposed", "CRITICAL", 0),
+            (datetime.datetime.now().isoformat(), "aws", "prod-account", "Security Group sg-0a1b2c3d allows 0.0.0.0/0 on port 22 (SSH)", "HIGH", 1),
+            (datetime.datetime.now().isoformat(), "gcp", "my-project-123", "Over-privileged IAM role attached to VM", "MEDIUM", 0),
+            (datetime.datetime.now().isoformat(), "azure", "sub-456", "Blob container publicly accessible", "HIGH", 0),
+        ]
+        
+        for alert in demo_alerts:
+            save_alert(alert[1], alert[2], alert[3], alert[4], fixed=alert[5])
+        
+        # Sample Scan
+        save_scan(
+            target="prod.example.com",
+            cloud="aws",
+            account="prod-account",
+            open_services={80: ("HTTP", "Apache"), 443: ("HTTPS", "Nginx")},
+            findings=[("Public S3 bucket exposed", "AWS", 9.5, "CRITICAL")]
+        )
+        
+        # Refresh after seeding
         scans = get_scan_history()
         alerts = get_alerts(20)
-        total_scans = len(scans)
-        critical_findings = sum(1 for a in alerts if a[4] == 'CRITICAL')
-        fixed_issues = sum(1 for a in alerts if a[5] == 1)
-        open_ports = scans[0][3] if scans else 0
+    
+    # === EXISTING CALCULATIONS ===
+    total_scans = len(scans)
+    critical_findings = sum(1 for a in alerts if a[4] == 'CRITICAL')
+    fixed_issues = sum(1 for a in alerts if a[5] == 1)
+    open_ports = scans[0][3] if scans else 0
 
+    paths = []
+    try:
+        resources = fetch_aws_resources('default')
+        G = build_attack_graph(resources)
+        found = find_attack_paths(G)
+        for p in found:
+            readable = []
+            for node in p:
+                if node == "Internet": 
+                    readable.append("🌐 Internet")
+                elif node.startswith("s3:"): 
+                    readable.append(f"📦 {node.replace('s3:', '')}")
+                elif node.startswith("sg-"): 
+                    readable.append("🛡️ SG")
+                elif node.startswith("i-"): 
+                    readable.append("🖥️ EC2")
+                elif node.startswith("iam:"): 
+                    readable.append("🔑 IAM")
+                else: 
+                    readable.append(node)
+            paths.append(readable)
+    except:
         paths = []
-        try:
-            resources = fetch_aws_resources('default')
-            G = build_attack_graph(resources)
-            found = find_attack_paths(G)
-            for p in found:
-                readable = []
-                for node in p:
-                    if node == "Internet": readable.append("🌐 Internet")
-                    elif node.startswith("s3:"): readable.append(f"📦 {node.replace('s3:', '')}")
-                    elif node.startswith("sg-"): readable.append("🛡️ SG")
-                    elif node.startswith("i-"): readable.append("🖥️ EC2")
-                    elif node.startswith("iam:"): readable.append("🔑 IAM")
-                    else: readable.append(node)
-                paths.append(readable)
-        except:
-            paths = []
 
-        return jsonify({
-            'total_scans': total_scans,
-            'critical_findings': critical_findings,
-            'fixed_issues': fixed_issues,
-            'open_ports': open_ports,
-            'scans': scans,
-            'alerts': alerts,
-            'attack_paths': paths
-        })
+    return jsonify({
+        'total_scans': total_scans,
+        'critical_findings': critical_findings,
+        'fixed_issues': fixed_issues,
+        'open_ports': open_ports,
+        'scans': scans,
+        'alerts': alerts,
+        'attack_paths': paths
+    })
 
     @app.route('/api/ask', methods=['POST'])
     def ask_ai():
