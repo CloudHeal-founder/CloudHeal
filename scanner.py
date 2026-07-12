@@ -211,43 +211,13 @@ def send_slack_alert(message, severity="INFO", webhook_url=None, cloud="unknown"
     except Exception:
         pass
 
-# ---------- AI QUERY FUNCTION (CONVERSATIONAL) ----------
-def ai_query(question, context="", conversation_history=None):
+# ---------- CONVERSATIONAL AI QUERY ----------
+def ai_query(question, context=""):
     """Ask AI about your cloud security – fully conversational"""
-    
-    # ─── CONVERSATION MEMORY ───
-    if conversation_history is None:
-        conversation_history = []
-    
-    # ─── PERSONALITY & KNOWLEDGE BASE ───
-    aegis_knowledge = """
-Aegis (APCSS) is the world's first open‑source, four‑cloud, self‑healing security platform.
-
-🔹 WHAT AEGIS DOES:
-- Scans AWS, GCP, Azure, and OCI in one command.
-- Detects attack paths: Internet → Public VM → IAM Role → S3 Bucket.
-- Auto‑fixes: open S3 buckets, overly permissive security groups, exposed EC2 ports, over‑privileged IAM roles.
-- Includes a live dashboard with risk score, cloud inventory, attack path explorer, and AI copilot.
-- Generates compliance reports (PCI‑DSS, HIPAA, SOC2).
-- Sends Slack alerts for critical findings.
-- Supports multi‑account scanning across all clouds.
-
-👤 THE FOUNDER:
-Austin Emmanuel – a 19‑year‑old founder from Nigeria. He built Aegis because commercial tools like Wiz and Orca cost millions and lock security behind paywalls. He wanted to democratize cloud security and give every team, from startups to enterprises, access to world‑class protection – for free.
-
-🏆 WHY AEGIS STANDS OUT:
-- 100% open source – no vendor lock‑in.
-- Four‑cloud coverage (the only open‑source tool that does this).
-- Auto‑remediation of attack chains, not just alerts.
-- AI assistant that answers security questions.
-- Built by a solo founder, not a billion‑dollar corporation.
-"""
-
-    # ─── CONVERSATIONAL RESPONSES ───
     q_lower = question.lower().strip()
-    
-    # Greetings
-    if any(word in q_lower for word in ["hey", "hi", "hello", "yo", "sup", "what's up", "howdy", "greetings"]):
+
+    # ─── GREETINGS ───
+    if any(word in q_lower for word in ["hey", "hi", "hello", "yo", "sup", "what's up", "howdy"]):
         responses = [
             "Hey! How can I help you secure your cloud today? 😊",
             "Hi there! Ready to kick some cloud security issues? 💪",
@@ -255,17 +225,13 @@ Austin Emmanuel – a 19‑year‑old founder from Nigeria. He built Aegis becau
             "Hello! Your cloud security copilot is here. What do you need? 🛡️",
             "Sup! I'm Aegis AI – your personal cloud security assistant. Ask me anything!"
         ]
-        return responses[random.randint(0, len(responses)-1)]
-    
-    # Thank you / appreciation
+        return random.choice(responses)
+
+    # ─── THANK YOU ───
     if any(word in q_lower for word in ["thank", "thanks", "appreciate", "good job", "great", "awesome"]):
         return "You're welcome! That's what I'm here for. Anything else you need help with? 😊"
-    
-    # Asking about the weather (fun)
-    if "weather" in q_lower:
-        return "I can't check the weather outside, but your cloud security forecast is looking good! 🌤️ Want me to scan for any storm clouds? ⚡"
-    
-    # About the founder
+
+    # ─── FOUNDER ───
     if any(word in q_lower for word in ["founder", "who built", "who created", "austin", "emmanuel", "creator"]):
         return """
 👤 THE FOUNDER
@@ -274,14 +240,12 @@ Austin Emmanuel is a 19‑year‑old founder from Nigeria who built Aegis (APCSS
 
 He created Aegis because commercial cloud security tools like Wiz and Orca charge millions of dollars, locking out startups, students, and independent developers. He wanted to democratize cloud security and give everyone access to enterprise‑grade protection – for free.
 
-Aegis is his vision of a world where security is open, transparent, and accessible to all.
-
 He built this entire platform alone – the scanner, dashboard, AI, auto‑fix, and everything else. Pretty impressive for 19, right? 🚀
 """
-    
-    # What is Aegis / what does it do
-    if any(word in q_lower for word in ["what is aegis", "aegis", "apcss", "platform", "does aegis", "tell me about aegis"]):
-        return f"""
+
+    # ─── WHAT IS AEGIS ───
+    if any(word in q_lower for word in ["what is aegis", "aegis", "apcss", "platform", "does aegis"]):
+        return """
 🛡️ WHAT IS AEGIS?
 
 Aegis (APCSS) is a fully open‑source, self‑healing cloud security platform that:
@@ -294,12 +258,12 @@ Aegis (APCSS) is a fully open‑source, self‑healing cloud security platform t
 ✓ Generates compliance reports (PCI‑DSS, HIPAA, SOC2).
 ✓ Sends Slack alerts for critical risks.
 
-It was built by Austin Emmanuel, a 19‑year‑old founder from Nigeria, to make cloud security accessible to everyone – for free.
+Built by Austin Emmanuel, a 19‑year‑old founder from Nigeria, to make cloud security accessible to everyone – for free.
 
 Want me to scan your cloud and show you how it works? 🚀
 """
-    
-    # Attack paths
+
+    # ─── ATTACK PATHS ───
     if any(word in q_lower for word in ["attack path", "attack paths", "how do attackers", "lateral movement"]):
         return """
 🔗 ATTACK PATHS EXPLAINED
@@ -320,10 +284,10 @@ Aegis finds these paths automatically and can auto‑fix them by:
 - Removing excessive IAM permissions
 - Locking public S3 buckets
 
-Want me to scan your cloud for attack paths? I can show you exactly how attackers would move through your infrastructure. ⚡
+Want me to scan your cloud for attack paths? ⚡
 """
-    
-    # S3 buckets
+
+    # ─── S3 BUCKETS ───
     if any(word in q_lower for word in ["s3", "s3 bucket", "public bucket", "bucket"]):
         return """
 📦 S3 BUCKET SECURITY
@@ -336,12 +300,12 @@ Aegis can:
 ✅ Restrict bucket policies
 ✅ Generate compliance reports
 
-Want me to check your S3 buckets? I can tell you if any are exposed. 🔍
+Want me to check your S3 buckets? 🔍
 
 *Pro feature: Auto‑fix available for Pro users.*
 """
-    
-    # IAM / permissions
+
+    # ─── IAM / PERMISSIONS ───
     if any(word in q_lower for word in ["iam", "permissions", "role", "access", "privileged"]):
         return """
 🔑 IAM & PERMISSIONS SECURITY
@@ -354,80 +318,22 @@ Aegis helps you:
 ✅ Auto‑fix by replacing with read‑only roles
 ✅ Audit all IAM policies
 
-Want me to check your IAM roles for excessive permissions? 🔍
-
 *Pro feature: Auto‑fix available for Pro users.*
 """
-    
-    # Security Groups / Firewall
-    if any(word in q_lower for word in ["security group", "sg", "firewall", "open port", "port"]):
-        return """
-🛡️ SECURITY GROUP SECURITY
 
-Open security groups (0.0.0.0/0) are one of the easiest ways for attackers to enter your cloud environment. SSH (port 22) and RDP (port 3389) are the most commonly exploited.
-
-Aegis can:
-✅ Detect security groups with 0.0.0.0/0 rules
-✅ Identify open SSH, RDP, and database ports
-✅ Auto‑remove risky inbound rules
-✅ Harden your network perimeter
-
-Want me to check your security groups? 🔍
-
-*Pro feature: Auto‑fix available for Pro users.*
-"""
-    
-    # Remediation / Fixing issues
-    if any(word in q_lower for word in ["fix", "remediate", "how do i fix", "auto-fix", "how to fix", "resolve"]):
-        return """
-🛠️ AUTO‑REMEDIATION
-
-Aegis doesn't just detect problems – it fixes them automatically!
-
-What Aegis can auto‑fix:
-✅ Public S3 buckets → Block public access
-✅ Open security groups → Remove 0.0.0.0/0 rules
-✅ Exposed EC2 ports → Close risky ports
-✅ Over‑privileged IAM roles → Replace with read‑only roles
-
-Want me to scan your cloud and show you what needs fixing? I can break it down for you. 🔧
-
-*Pro feature: Auto‑fix available for Pro users.*
-"""
-    
-    # Compliance
-    if any(word in q_lower for word in ["compliance", "pci", "hipaa", "soc2", "gdpr", "report", "audit"]):
-        return """
-📋 COMPLIANCE & REPORTING
-
-Aegis helps you stay compliant with industry standards by:
-✅ Scanning for compliance violations
-✅ Generating PDF reports (PCI‑DSS, HIPAA, SOC2)
-✅ Tracking remediation progress
-✅ Providing audit‑ready documentation
-
-Compliance reports are a Pro feature. Upgrade to Pro to generate and download PDF reports. 📄
-
-Want me to check your compliance status now? 🔍
-"""
-    
-    # Help / commands
-    if any(word in q_lower for word in ["help", "commands", "what can you do", "how to use", "guide", "tutorial"]):
+    # ─── HELP / COMMANDS ───
+    if any(word in q_lower for word in ["help", "commands", "what can you do", "how to use"]):
         return """
 💡 AEGIS AI – HELP & COMMANDS
-
-Here's what I can help you with:
 
 🔹 General Questions:
 - "What is Aegis?" → Learn about the platform
 - "Who built Aegis?" → Meet the founder
-- "How do I use the dashboard?" → Dashboard guide
 
 🔹 Security Topics:
 - "What is an attack path?" → Attack path explanation
 - "How do I fix a public S3 bucket?" → S3 remediation
 - "What are security groups?" → SG explanation
-- "How do I check my IAM roles?" → IAM guidance
 
 🔹 Commands you can run:
 `scan example.com -p 80,443` → Scan ports
@@ -436,39 +342,24 @@ Here's what I can help you with:
 `scan example.com --report` → PDF report (Pro)
 `help` → Show this list
 
-🔹 Quick Actions:
-- "Fix my S3 bucket" → I'll guide you
-- "Show me attack paths" → Visualize attacks
-- "Check my compliance" → Compliance report
-
 Anything else I can help you with? 🔥
 """
-    
-    # Context-aware fallback (if nothing matches)
+
+    # ─── DEFAULT FALLBACK ───
     if context:
         return f"""
 🤖 AEGIS AI
 
-I see you asked about: "{question}"
+I see you asked: "{question}"
 
-Based on your last scan context:
+Based on your last scan:
 {context}
 
-Here's my take:
-I can help you with cloud security, attack paths, S3 buckets, IAM roles, security groups, compliance, and auto‑remediation.
+I can help with cloud security, attack paths, S3 buckets, IAM roles, security groups, compliance, and auto‑remediation.
 
-What specific cloud security topic would you like to explore? I'm here to help! 🛡️
-
-Here are some things you can ask me:
-- "What is an attack path?"
-- "How do I fix a public S3 bucket?"
-- "Check my compliance status"
-- "Show me my risk score"
-
-Just let me know! 😊
+What specific topic would you like to explore? 🛡️
 """
-    
-    # Default fallback
+
     return """
 💡 AEGIS AI ASSISTANT
 
@@ -480,9 +371,6 @@ I'm your cloud security copilot! I can help you with:
 • Cloud security best practices
 • Aegis – what it is, who built it, and how to use it
 • Compliance (PCI‑DSS, HIPAA, SOC2)
-
-Here's a quick summary:
-Aegis is the world's first open‑source, four‑cloud, self‑healing security platform, built by Austin Emmanuel (19, Nigeria). It scans AWS, Azure, GCP, and OCI, finds attack paths, and auto‑fixes risks – all for free.
 
 What would you like to know? Just ask! 🚀
 """
@@ -2460,6 +2348,24 @@ DASHBOARD_HTML = """
     </div>
 
     <script>
+        // ─── Add log entry ───
+        function addLog(message, type='info') {
+            const log = document.getElementById('resultsLog');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const ts = new Date().toLocaleTimeString();
+            let cls = type === 'success' ? 'success' : type === 'error' ? 'error' : 'info';
+            entry.innerHTML = `<span class="timestamp">[${ts}]</span> <span class="${cls}">${message}</span>`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // ─── Clear Log ───
+        function clearLogs() {
+            document.getElementById('resultsLog').innerHTML = `<div class="log-entry"><span class="timestamp">[System]</span> <span class="info">Log cleared.</span></div>`;
+        }
+
+        // ─── Run Command ───
         function runCommand() {
             const input = document.getElementById('cmdInput');
             const cmd = input.value.trim();
@@ -2494,13 +2400,13 @@ DASHBOARD_HTML = """
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'ok') {
-                        addLog(`✅ ${data.message}`, 'success');
+                        addLog('✅ ' + data.message, 'success');
                         loadData();
                     } else {
-                        addLog(`❌ ${data.message}`, 'error');
+                        addLog('❌ ' + data.message, 'error');
                     }
                 })
-                .catch(err => addLog(`❌ Error: ${err.message}`, 'error'));
+                .catch(err => addLog('❌ Error: ' + err.message, 'error'));
             } else if (cmd === 'help') {
                 addLog('Available commands:\n- scan <target> -p <ports> [--cloud] [--fix] [--report]\n- help', 'info');
             } else {
@@ -2508,21 +2414,88 @@ DASHBOARD_HTML = """
             }
         }
 
-        function addLog(message, type='info') {
-            const log = document.getElementById('resultsLog');
-            const entry = document.createElement('div');
-            entry.className = 'log-entry';
-            const ts = new Date().toLocaleTimeString();
-            let cls = type === 'success' ? 'success' : type === 'error' ? 'error' : 'info';
-            entry.innerHTML = `<span class="timestamp">[${ts}]</span> <span class="${cls}">${message}</span>`;
-            log.appendChild(entry);
-            log.scrollTop = log.scrollHeight;
+        // ─── Scan Now ───
+        let scanInProgress = false;
+        async function startScan() {
+            if (scanInProgress) return;
+            scanInProgress = true;
+            document.getElementById('scanBtn').disabled = true;
+            document.getElementById('scanSpinner').innerHTML = '<div style="display:inline-block; width:16px; height:16px; border:2px solid #94a3b8; border-top-color:#2563eb; border-radius:50%; animation: spin 0.8s linear infinite; margin-left:10px; vertical-align:middle;"></div>';
+            addLog('Starting default scan on example.com:80,443...', 'info');
+            try {
+                const res = await fetch('/scan', { method: 'POST' });
+                const result = await res.json();
+                if (result.status === 'ok') {
+                    addLog('✅ ' + result.message, 'success');
+                    loadData();
+                } else {
+                    addLog('❌ ' + result.message, 'error');
+                }
+            } catch (e) {
+                addLog('❌ Error: ' + e.message, 'error');
+            } finally {
+                document.getElementById('scanBtn').disabled = false;
+                document.getElementById('scanSpinner').innerHTML = '';
+                scanInProgress = false;
+            }
         }
 
-        function clearLogs() {
-            document.getElementById('resultsLog').innerHTML = `<div class="log-entry"><span class="timestamp">[System]</span> <span class="info">Log cleared.</span></div>`;
+        // ─── AI Toggle ───
+        function toggleAI() {
+            const overlay = document.getElementById('aiChatOverlay');
+            overlay.classList.toggle('open');
+            overlay.style.display = overlay.classList.contains('open') ? 'flex' : 'none';
         }
 
+        // ─── Send AI ───
+        async function sendAI() {
+            const input = document.getElementById('aiInput');
+            const msg = input.value.trim();
+            if (!msg) return;
+            input.value = '';
+            const messagesDiv = document.getElementById('aiMessages');
+            const userDiv = document.createElement('div');
+            userDiv.className = 'msg user';
+            userDiv.textContent = msg;
+            messagesDiv.appendChild(userDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'msg ai';
+            loadingDiv.textContent = 'Thinking...';
+            messagesDiv.appendChild(loadingDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+            try {
+                const res = await fetch('/api/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question: msg })
+                });
+                const data = await res.json();
+                loadingDiv.textContent = data.response || 'Sorry, I could not answer that.';
+            } catch (e) {
+                loadingDiv.textContent = 'Error: Could not reach AI service.';
+            }
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // ─── Quick Ask (from shield) ───
+        async function quickAsk() {
+            const input = document.getElementById('quickAIInput');
+            const msg = input.value.trim();
+            if (!msg) return;
+            input.value = '';
+            const overlay = document.getElementById('aiChatOverlay');
+            if (!overlay.classList.contains('open')) {
+                overlay.classList.add('open');
+                overlay.style.display = 'flex';
+            }
+            document.getElementById('aiInput').value = msg;
+            await sendAI();
+        }
+
+        // ─── Load Dashboard Data ───
         async function loadData() {
             try {
                 const res = await fetch('/api/data');
@@ -2534,18 +2507,14 @@ DASHBOARD_HTML = """
                 document.getElementById('autoRemediated').textContent = data.fixed_issues || 0;
                 document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
 
-                const cloudCounts = { aws: 0, azure: 0, gcp: 0, oci: 0 };
-                if (data.scans) {
-                    data.scans.forEach(s => {
-                        const cloud = s[1] ? s[1].toLowerCase() : '';
-                        if (cloud in cloudCounts) cloudCounts[cloud] += 1;
-                    });
-                }
+                // Cloud counts
+                const cloudCounts = data.cloud_counts || { aws: 0, azure: 0, gcp: 0, oci: 0 };
                 document.getElementById('awsCount').textContent = cloudCounts.aws;
                 document.getElementById('azureCount').textContent = cloudCounts.azure;
                 document.getElementById('gcpCount').textContent = cloudCounts.gcp;
                 document.getElementById('ociCount').textContent = cloudCounts.oci;
 
+                // Scans table
                 const scansTable = document.getElementById('scansTable');
                 if (data.scans && data.scans.length > 0) {
                     scansTable.innerHTML = data.scans.map(s => `<tr><td>${s[0]}</td><td>${s[1]}</td><td>${s[2]}</td><td>${s[3]}</td></tr>`).join('');
@@ -2553,6 +2522,7 @@ DASHBOARD_HTML = """
                     scansTable.innerHTML = `<tr><td colspan="4" class="empty-state">No scans yet. Run a command.</td></tr>`;
                 }
 
+                // Alerts table
                 const alertsTable = document.getElementById('alertsTable');
                 if (data.alerts && data.alerts.length > 0) {
                     alertsTable.innerHTML = data.alerts.map(a => `
@@ -2567,6 +2537,7 @@ DASHBOARD_HTML = """
                     alertsTable.innerHTML = `<tr><td colspan="4" class="empty-state">No alerts yet.</td></tr>`;
                 }
 
+                // Attack Paths
                 const pathsDiv = document.getElementById('attackPaths');
                 if (data.attack_paths && data.attack_paths.length > 0) {
                     pathsDiv.innerHTML = data.attack_paths.map(path => `
@@ -2581,7 +2552,7 @@ DASHBOARD_HTML = """
                     pathsDiv.innerHTML = `<div class="empty-state">✅ No attack paths found.</div>`;
                 }
 
-                // Charts
+                // ─── Charts ───
                 const ctx1 = document.getElementById('trendChart').getContext('2d');
                 const ctx2 = document.getElementById('severityChart').getContext('2d');
 
@@ -2662,86 +2633,11 @@ DASHBOARD_HTML = """
             return Math.max(0, Math.min(100, score));
         }
 
-        let scanInProgress = false;
-
-        async function startScan() {
-            if (scanInProgress) return;
-            scanInProgress = true;
-            document.getElementById('scanBtn').disabled = true;
-            document.getElementById('scanSpinner').innerHTML = '<div style="display:inline-block; width:16px; height:16px; border:2px solid #94a3b8; border-top-color:#2563eb; border-radius:50%; animation: spin 0.8s linear infinite; margin-left:10px; vertical-align:middle;"></div>';
-            addLog('Starting default scan on example.com:80,443...', 'info');
-            try {
-                const res = await fetch('/scan', { method: 'POST' });
-                const result = await res.json();
-                if (result.status === 'ok') {
-                    addLog('✅ Scan completed successfully!', 'success');
-                    loadData();
-                } else {
-                    addLog('❌ Scan failed: ' + (result.message || 'Unknown error'), 'error');
-                }
-            } catch (e) {
-                addLog('❌ Error: ' + e.message, 'error');
-            } finally {
-                document.getElementById('scanBtn').disabled = false;
-                document.getElementById('scanSpinner').innerHTML = '';
-                scanInProgress = false;
-            }
-        }
-
-        function toggleAI() {
-            const overlay = document.getElementById('aiChatOverlay');
-            overlay.classList.toggle('open');
-            overlay.style.display = overlay.classList.contains('open') ? 'flex' : 'none';
-        }
-
-        async function sendAI() {
-            const input = document.getElementById('aiInput');
-            const msg = input.value.trim();
-            if (!msg) return;
-            input.value = '';
-            const messagesDiv = document.getElementById('aiMessages');
-            const userDiv = document.createElement('div');
-            userDiv.className = 'msg user';
-            userDiv.textContent = msg;
-            messagesDiv.appendChild(userDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-
-            const loadingDiv = document.createElement('div');
-            loadingDiv.className = 'msg ai';
-            loadingDiv.textContent = 'Thinking...';
-            messagesDiv.appendChild(loadingDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-
-            try {
-                const res = await fetch('/api/ask', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ question: msg })
-                });
-                const data = await res.json();
-                loadingDiv.textContent = data.response || 'Sorry, I could not answer that.';
-            } catch (e) {
-                loadingDiv.textContent = 'Error: Could not reach AI service.';
-            }
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-
-        async function quickAsk() {
-            const input = document.getElementById('quickAIInput');
-            const msg = input.value.trim();
-            if (!msg) return;
-            input.value = '';
-            const overlay = document.getElementById('aiChatOverlay');
-            if (!overlay.classList.contains('open')) {
-                overlay.classList.add('open');
-                overlay.style.display = 'flex';
-            }
-            document.getElementById('aiInput').value = msg;
-            await sendAI();
-        }
-
+        // ─── Initial Load ───
         loadData();
         setInterval(loadData, 30000);
+
+        // Inject spinner animation
         const style = document.createElement('style');
         style.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
         document.head.appendChild(style);
@@ -3026,77 +2922,63 @@ if FLASK_AVAILABLE:
 
     # ── API ──
     @app.route('/api/data')
-def api_data():
-    scans = get_scan_history()
-    alerts = get_alerts(20)
-    
-    # === DEMO DATA SEEDING (for nice dashboard on first visit) ===
-    if len(scans) == 0 and len(alerts) == 0:
-        print("[DEMO] Seeding sample data for dashboard...")
-        
-        # Sample Alerts
-        demo_alerts = [
-            (datetime.datetime.now().isoformat(), "aws", "prod-account", "Public S3 bucket 'customer-data-2025' exposed", "CRITICAL", 0),
-            (datetime.datetime.now().isoformat(), "aws", "prod-account", "Security Group sg-0a1b2c3d allows 0.0.0.0/0 on port 22 (SSH)", "HIGH", 1),
-            (datetime.datetime.now().isoformat(), "gcp", "my-project-123", "Over-privileged IAM role attached to VM", "MEDIUM", 0),
-            (datetime.datetime.now().isoformat(), "azure", "sub-456", "Blob container publicly accessible", "HIGH", 0),
-        ]
-        
-        for alert in demo_alerts:
-            save_alert(alert[1], alert[2], alert[3], alert[4], fixed=alert[5])
-        
-        # Sample Scan
-        save_scan(
-            target="prod.example.com",
-            cloud="aws",
-            account="prod-account",
-            open_services={80: ("HTTP", "Apache"), 443: ("HTTPS", "Nginx")},
-            findings=[("Public S3 bucket exposed", "AWS", 9.5, "CRITICAL")]
-        )
-        
-        # Refresh after seeding
+    def api_data():
         scans = get_scan_history()
         alerts = get_alerts(20)
-    
-    # === EXISTING CALCULATIONS ===
-    total_scans = len(scans)
-    critical_findings = sum(1 for a in alerts if a[4] == 'CRITICAL')
-    fixed_issues = sum(1 for a in alerts if a[5] == 1)
-    open_ports = scans[0][3] if scans else 0
+        total_scans = len(scans)
+        critical_findings = sum(1 for a in alerts if a[4] == 'CRITICAL')
+        fixed_issues = sum(1 for a in alerts if a[5] == 1)
+        open_ports = scans[0][3] if scans else 0
 
-    paths = []
-    try:
-        resources = fetch_aws_resources('default')
-        G = build_attack_graph(resources)
-        found = find_attack_paths(G)
-        for p in found:
-            readable = []
-            for node in p:
-                if node == "Internet": 
-                    readable.append("🌐 Internet")
-                elif node.startswith("s3:"): 
-                    readable.append(f"📦 {node.replace('s3:', '')}")
-                elif node.startswith("sg-"): 
-                    readable.append("🛡️ SG")
-                elif node.startswith("i-"): 
-                    readable.append("🖥️ EC2")
-                elif node.startswith("iam:"): 
-                    readable.append("🔑 IAM")
-                else: 
-                    readable.append(node)
-            paths.append(readable)
-    except:
+        # Cloud asset counts
+        cloud_counts = {'aws': 0, 'azure': 0, 'gcp': 0, 'oci': 0}
+        for scan in scans:
+            if scan[1] and scan[1].lower() in cloud_counts:
+                cloud_counts[scan[1].lower()] += 1
+
+        # Compliance scores
+        total_alerts = len(alerts)
+        if total_alerts > 0:
+            pci_score = max(0, 100 - (critical_findings * 10 + sum(1 for a in alerts if a[4] == 'HIGH') * 5))
+            hipaa_score = max(0, 100 - (critical_findings * 8 + sum(1 for a in alerts if a[4] == 'HIGH') * 4))
+            soc2_score = max(0, 100 - (critical_findings * 6 + sum(1 for a in alerts if a[4] == 'HIGH') * 3))
+        else:
+            pci_score = hipaa_score = soc2_score = 100
+
+        # Attack paths
         paths = []
+        try:
+            resources = fetch_aws_resources('default')
+            G = build_attack_graph(resources)
+            found = find_attack_paths(G)
+            for p in found:
+                readable = []
+                for node in p:
+                    if node == "Internet": readable.append("🌐 Internet")
+                    elif node.startswith("s3:"): readable.append(f"📦 {node.replace('s3:', '')}")
+                    elif node.startswith("sg-"): readable.append("🛡️ SG")
+                    elif node.startswith("i-"): readable.append("🖥️ EC2")
+                    elif node.startswith("iam:"): readable.append("🔑 IAM")
+                    else: readable.append(node)
+                paths.append(readable)
+        except:
+            paths = []
 
-    return jsonify({
-        'total_scans': total_scans,
-        'critical_findings': critical_findings,
-        'fixed_issues': fixed_issues,
-        'open_ports': open_ports,
-        'scans': scans,
-        'alerts': alerts,
-        'attack_paths': paths
-    })
+        return jsonify({
+            'total_scans': total_scans,
+            'critical_findings': critical_findings,
+            'fixed_issues': fixed_issues,
+            'open_ports': open_ports,
+            'scans': scans,
+            'alerts': alerts,
+            'attack_paths': paths,
+            'cloud_counts': cloud_counts,
+            'compliance': {
+                'pci': pci_score,
+                'hipaa': hipaa_score,
+                'soc2': soc2_score
+            }
+        })
 
     @app.route('/api/ask', methods=['POST'])
     def ask_ai():
