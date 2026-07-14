@@ -1,11 +1,4 @@
-flask
-tabulate
-requests
-urllib3
-boto3
-google-cloud-storage
-azure-storage-blob
-oci
-networkx
-fpdf2
-
+Flask==3.0.0
+Werkzeug==3.0.1
+requests==2.31.0
+urllib3==2.1.0
