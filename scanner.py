@@ -85,12 +85,13 @@ try:
 except ImportError:
     OCI_AVAILABLE = False
 
-# ----- Table Formatting -----
+# ----- Table Formatting (CLI-only, never required for the web app) -----
 try:
     from tabulate import tabulate
+    TABULATE_AVAILABLE = True
 except ImportError:
-    print("Install tabulate: pip install tabulate")
-    sys.exit(1)
+    TABULATE_AVAILABLE = False
+    print("[!] tabulate not installed (only needed for CLI table output). Install with: pip install tabulate")
 
 # ---------- Database Setup ----------
 DB_NAME = "apcss_global.db"
@@ -1267,6 +1268,8 @@ def fetch_aws_resources(account_name=None, session=None):
     return resources
 
 def build_attack_graph(resources):
+    if not NETWORKX_AVAILABLE:
+        raise RuntimeError("networkx not installed — attack path graphing is unavailable. pip install networkx")
     G = nx.DiGraph()
     G.add_node("Internet", type="external")
     for sg_id, data in resources['security_groups'].items():
@@ -3626,7 +3629,11 @@ def main():
     reset = "\033[0m"
     headers = ["Port", "Service/Check", "Details", "CVSS", "Severity", "Type"]
     for row in sorted(table_data, key=lambda x: {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "INFO": 3}.get(x[4], 9)):
-        print(colour_map.get(row[4], "") + tabulate([row], headers=headers, tablefmt="plain") + reset)
+        if TABULATE_AVAILABLE:
+            line = tabulate([row], headers=headers, tablefmt="plain")
+        else:
+            line = "  ".join(str(v) for v in row)
+        print(colour_map.get(row[4], "") + line + reset)
 
     print("\n" + "=" * 110)
     print(f"Total Open Ports: {len(open_services)} | Total Findings: {len(all_findings)} | Auto-Fixed: {fixed_count}")
