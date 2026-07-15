@@ -2717,59 +2717,93 @@ LANDING_PAGE_HTML = """
         * { font-family: 'Inter', sans-serif; }
         html { scroll-behavior: smooth; }
         body { background: #000000; color: #ffffff; overflow-x: hidden; }
+        #particle-bg { position: fixed; inset: 0; z-index: -2; background: #000; }
         .plasma {
-            position: fixed; width: 140%; height: 140%; left: -20%; top: -20%; z-index: -1;
+            position: fixed; width: 150%; height: 150%; left: -25%; top: -25%; z-index: -1;
             background:
-                radial-gradient(circle at 15% 20%, rgba(37,99,235,0.22) 0%, transparent 40%),
-                radial-gradient(circle at 85% 30%, rgba(59,130,246,0.16) 0%, transparent 35%),
-                radial-gradient(circle at 50% 85%, rgba(37,99,235,0.12) 0%, transparent 40%);
-            filter: blur(120px);
-            animation: driftPlasma 26s ease-in-out infinite;
+                radial-gradient(circle at 12% 15%, rgba(37,99,235,0.30) 0%, transparent 38%),
+                radial-gradient(circle at 88% 25%, rgba(96,165,250,0.22) 0%, transparent 35%),
+                radial-gradient(circle at 50% 90%, rgba(255,255,255,0.06) 0%, transparent 30%),
+                radial-gradient(circle at 30% 70%, rgba(29,78,216,0.20) 0%, transparent 40%);
+            filter: blur(110px);
+            animation: driftPlasma 22s ease-in-out infinite;
         }
         @keyframes driftPlasma {
             0%, 100% { transform: translate(0, 0) scale(1); }
-            33% { transform: translate(-2%, 2%) scale(1.04); }
-            66% { transform: translate(2%, -1%) scale(0.98); }
+            33% { transform: translate(-3%, 3%) scale(1.06); }
+            66% { transform: translate(3%, -2%) scale(0.96); }
         }
-        .glass { background: rgba(255,255,255,0.03); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,0.08); }
-        .glass-card { background: rgba(255,255,255,0.02); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.06); transition: all 0.3s ease; }
-        .glass-card:hover { border-color: #2563eb; transform: translateY(-6px); box-shadow: 0 20px 60px rgba(37,99,235,0.15); }
-        .hero-gradient { background: linear-gradient(135deg, #2563eb 0%, #3b82f6 50%, #60a5fa 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-        .btn-primary { background: #2563eb; transition: all 0.3s ease; }
-        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 40px rgba(37,99,235,0.4); }
-        .btn-secondary { border: 1px solid rgba(255,255,255,0.15); transition: all 0.3s ease; }
-        .btn-secondary:hover { background: rgba(255,255,255,0.05); border-color: #2563eb; }
-        .trust-item { opacity: 0.6; transition: all 0.3s ease; }
+        .glass { background: rgba(255,255,255,0.035); backdrop-filter: blur(18px); border: 1px solid rgba(255,255,255,0.09); }
+        .glass-card { background: rgba(255,255,255,0.025); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,0.07); transition: all 0.35s ease; position: relative; overflow: hidden; }
+        .glass-card::before {
+            content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px;
+            background: linear-gradient(135deg, rgba(96,165,250,0), rgba(96,165,250,0.5), rgba(255,255,255,0));
+            -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            -webkit-mask-composite: xor; mask-composite: exclude;
+            opacity: 0; transition: opacity 0.35s ease;
+        }
+        .glass-card:hover::before { opacity: 1; }
+        .glass-card:hover { border-color: rgba(96,165,250,0.4); transform: translateY(-6px); box-shadow: 0 24px 70px rgba(37,99,235,0.22); }
+        .hero-gradient { background: linear-gradient(135deg, #93c5fd 0%, #3b82f6 45%, #ffffff 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; background-size: 200% auto; animation: shine 6s linear infinite; }
+        @keyframes shine { to { background-position: 200% center; } }
+        .btn-primary { background: linear-gradient(135deg, #2563eb, #3b82f6); position: relative; overflow: hidden; transition: all 0.3s ease; }
+        .btn-primary::after {
+            content: ""; position: absolute; top: 0; left: -75%; width: 50%; height: 100%;
+            background: linear-gradient(120deg, transparent, rgba(255,255,255,0.5), transparent);
+            transform: skewX(-20deg); animation: sweep 3s ease-in-out infinite;
+        }
+        @keyframes sweep { 0% { left: -75%; } 50%, 100% { left: 130%; } }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 50px rgba(37,99,235,0.55); }
+        .btn-secondary { border: 1px solid rgba(255,255,255,0.18); transition: all 0.3s ease; }
+        .btn-secondary:hover { background: rgba(255,255,255,0.06); border-color: #60a5fa; box-shadow: 0 0 30px rgba(96,165,250,0.2); }
+        .trust-marquee { display: flex; gap: 4rem; width: max-content; animation: marquee 22s linear infinite; }
+        @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+        .trust-item { opacity: 0.55; transition: opacity 0.3s ease; white-space: nowrap; }
         .trust-item:hover { opacity: 1; }
-        .nav-drop { position:absolute; top:100%; left:50%; transform:translateX(-50%) translateY(8px); background:rgba(5,8,14,0.97); border:1px solid rgba(255,255,255,0.08); border-radius:14px; padding:10px; min-width:220px; opacity:0; pointer-events:none; transition:all 0.2s ease; backdrop-filter: blur(20px); }
+        .nav-drop { position:absolute; top:100%; left:50%; transform:translateX(-50%) translateY(8px); background:rgba(3,6,12,0.98); border:1px solid rgba(96,165,250,0.15); border-radius:14px; padding:10px; min-width:220px; opacity:0; pointer-events:none; transition:all 0.2s ease; backdrop-filter: blur(20px); }
         .nav-item:hover .nav-drop { opacity:1; pointer-events:auto; transform:translateX(-50%) translateY(0); }
+        .nav-item span { position: relative; }
+        .nav-item span::after, .nav-link::after {
+            content: ""; position: absolute; left: 12px; right: 12px; bottom: 2px; height: 2px;
+            background: linear-gradient(90deg, #2563eb, #93c5fd); transform: scaleX(0); transform-origin: left;
+            transition: transform 0.25s ease;
+        }
+        .nav-item:hover span::after, .nav-link:hover::after { transform: scaleX(1); }
         .nav-drop a { display:block; padding:9px 12px; border-radius:8px; font-size:13px; color:#94a3b8; transition:0.15s; }
-        .nav-drop a:hover { background:rgba(37,99,235,0.1); color:#fff; }
-        .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.7s ease, transform 0.7s ease; }
+        .nav-drop a:hover { background:rgba(37,99,235,0.12); color:#fff; }
+        .reveal { opacity: 0; transform: translateY(28px); transition: opacity 0.7s ease, transform 0.7s ease; }
         .reveal.in { opacity: 1; transform: translateY(0); }
-        .path-pulse { animation: pathPulse 2.4s ease-in-out infinite; }
-        @keyframes pathPulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
-        .path-arrow-anim { display:inline-block; animation: arrowNudge 1.6s ease-in-out infinite; }
-        @keyframes arrowNudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(3px); } }
+        .hero-line { opacity: 0; transform: translateY(30px); animation: heroIn 0.8s ease forwards; }
+        .hero-line:nth-child(1) { animation-delay: 0.1s; }
+        .hero-line:nth-child(2) { animation-delay: 0.28s; }
+        .hero-line:nth-child(3) { animation-delay: 0.46s; }
+        @keyframes heroIn { to { opacity: 1; transform: translateY(0); } }
+        .node-ring { animation: ringPulse 2.2s ease-in-out infinite; transform-origin: center; }
+        @keyframes ringPulse { 0%, 100% { opacity: 0.25; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.18); } }
+        .flow-line { stroke-dasharray: 6 8; animation: flowDash 1.2s linear infinite; }
+        @keyframes flowDash { to { stroke-dashoffset: -28; } }
+        .glow-badge { box-shadow: 0 0 24px rgba(37,99,235,0.35); }
         @media (prefers-reduced-motion: reduce) {
-            .plasma, .path-pulse, .path-arrow-anim { animation: none !important; }
+            .plasma, .hero-line, .node-ring, .flow-line, .trust-marquee, .btn-primary::after, .hero-gradient { animation: none !important; }
+            .hero-line { opacity: 1 !important; transform: none !important; }
             .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
         }
         @media (max-width: 768px) { .hero-text h1 { font-size: 2.5rem; } .nav-drop { display:none; } }
     </style>
 </head>
 <body>
+    <canvas id="particle-bg"></canvas>
     <div class="plasma"></div>
 
     <nav class="flex items-center justify-between px-6 md:px-10 lg:px-16 py-5 border-b border-white/5 max-w-7xl mx-auto relative z-20">
         <div class="flex items-center gap-2">
-            <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-500/20">🛡️</div>
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-bold text-xl glow-badge">🛡️</div>
             <span class="text-2xl font-bold text-white">Aegis</span>
-            <span class="text-xs font-medium text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20 hidden sm:inline">APCSS</span>
+            <span class="text-xs font-medium text-blue-300 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-400/20 hidden sm:inline">APCSS</span>
         </div>
         <div class="hidden lg:flex items-center gap-1 text-sm">
             <div class="nav-item relative">
-                <span class="text-slate-300 hover:text-white transition px-3 py-2 cursor-default inline-flex items-center gap-1">Platform <i class="fas fa-chevron-down text-[10px] opacity-50"></i></span>
+                <span class="text-slate-200 hover:text-white transition px-3 py-2 cursor-default inline-flex items-center gap-1">Platform <i class="fas fa-chevron-down text-[10px] opacity-50"></i></span>
                 <div class="nav-drop">
                     <a href="#platform"><i class="fas fa-search mr-2"></i>Multi-cloud scanning</a>
                     <a href="#platform"><i class="fas fa-diagram-project mr-2"></i>Attack path analysis</a>
@@ -2778,153 +2812,168 @@ LANDING_PAGE_HTML = """
                 </div>
             </div>
             <div class="nav-item relative">
-                <span class="text-slate-300 hover:text-white transition px-3 py-2 cursor-default inline-flex items-center gap-1">Solutions <i class="fas fa-chevron-down text-[10px] opacity-50"></i></span>
+                <span class="text-slate-200 hover:text-white transition px-3 py-2 cursor-default inline-flex items-center gap-1">Solutions <i class="fas fa-chevron-down text-[10px] opacity-50"></i></span>
                 <div class="nav-drop">
                     <a href="#solutions"><i class="fas fa-rocket mr-2"></i>For startups</a>
                     <a href="#solutions"><i class="fas fa-building mr-2"></i>For growing teams</a>
                     <a href="#solutions"><i class="fas fa-code mr-2"></i>For independent devs</a>
                 </div>
             </div>
-            <a href="/pricing" class="text-slate-300 hover:text-white transition px-3 py-2">Pricing</a>
+            <a href="/pricing" class="nav-link relative text-slate-200 hover:text-white transition px-3 py-2">Pricing</a>
             <div class="nav-item relative">
-                <span class="text-slate-300 hover:text-white transition px-3 py-2 cursor-default inline-flex items-center gap-1">Resources <i class="fas fa-chevron-down text-[10px] opacity-50"></i></span>
+                <span class="text-slate-200 hover:text-white transition px-3 py-2 cursor-default inline-flex items-center gap-1">Resources <i class="fas fa-chevron-down text-[10px] opacity-50"></i></span>
                 <div class="nav-drop">
                     <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank"><i class="fab fa-github mr-2"></i>Documentation</a>
                     <a href="#about"><i class="fas fa-graduation-cap mr-2"></i>Cloud security basics</a>
                 </div>
             </div>
-            <a href="#about" class="text-slate-300 hover:text-white transition px-3 py-2">Company</a>
+            <a href="#about" class="nav-link relative text-slate-200 hover:text-white transition px-3 py-2">Company</a>
         </div>
         <div class="flex items-center gap-4 text-sm">
             <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank" class="text-slate-400 hover:text-white transition hidden md:block"><i class="fab fa-github"></i></a>
-            <a href="/login" class="text-white font-medium hover:text-blue-400 transition">Login</a>
-            <a href="/signup" class="btn-primary text-white px-5 py-2.5 rounded-full text-sm font-semibold shadow-lg shadow-blue-500/20">Get Started</a>
+            <a href="/login" class="text-white font-medium hover:text-blue-300 transition">Login</a>
+            <a href="/signup" class="btn-primary text-white px-5 py-2.5 rounded-full text-sm font-semibold shadow-lg shadow-blue-500/30">Get Started</a>
         </div>
     </nav>
 
-    <section class="flex flex-col lg:flex-row items-center gap-12 px-6 md:px-10 lg:px-16 py-16 lg:py-24 max-w-7xl mx-auto">
-        <div class="flex-1 text-center lg:text-left reveal">
-            <div class="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 px-4 py-1.5 rounded-full text-sm text-blue-400 font-medium mb-6">
-                <span class="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span> Next-Gen Cloud Security
+    <section class="flex flex-col lg:flex-row items-center gap-12 px-6 md:px-10 lg:px-16 py-16 lg:py-24 max-w-7xl mx-auto relative z-10">
+        <div class="flex-1 text-center lg:text-left">
+            <div class="hero-line inline-flex items-center gap-2 bg-blue-500/10 border border-blue-400/25 px-4 py-1.5 rounded-full text-sm text-blue-300 font-medium mb-6 glow-badge">
+                <span class="w-2 h-2 rounded-full bg-blue-300 animate-pulse"></span> Next-Gen Cloud Security
             </div>
             <h1 class="hero-text text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-[1.1] tracking-tight">
-                Secure Your<br /><span class="hero-gradient">Entire Cloud</span><br />From One Platform
+                <span class="hero-line block text-white">Secure Your</span>
+                <span class="hero-line block hero-gradient">Entire Cloud</span>
+                <span class="hero-line block text-white">From One Platform</span>
             </h1>
-            <p class="text-slate-400 text-lg md:text-xl max-w-2xl mx-auto lg:mx-0 mt-6 leading-relaxed">
+            <p class="hero-line text-slate-300 text-lg md:text-xl max-w-2xl mx-auto lg:mx-0 mt-6 leading-relaxed">
                 Discover attack paths, misconfigurations, exposed assets, and cloud risks
                 across <span class="text-white font-medium">AWS</span>,
                 <span class="text-white font-medium">Azure</span>,
                 <span class="text-white font-medium">GCP</span> &amp;
                 <span class="text-white font-medium">OCI</span> – in real time.
             </p>
-            <div class="flex flex-wrap items-center justify-center lg:justify-start gap-4 mt-8">
-                <a href="/signup" class="btn-primary text-white px-8 py-3.5 rounded-full font-semibold text-base shadow-lg shadow-blue-500/25">Start Free <i class="fas fa-arrow-right ml-2 text-sm path-arrow-anim"></i></a>
+            <div class="hero-line flex flex-wrap items-center justify-center lg:justify-start gap-4 mt-8">
+                <a href="/signup" class="btn-primary text-white px-8 py-3.5 rounded-full font-semibold text-base shadow-lg shadow-blue-500/30">Start Free <i class="fas fa-arrow-right ml-2 text-sm"></i></a>
                 <a href="#platform" class="btn-secondary text-white px-8 py-3.5 rounded-full font-medium text-base">See the platform</a>
             </div>
-            <div class="flex flex-wrap items-center justify-center lg:justify-start gap-3 mt-8">
-                <span class="text-xs text-slate-500 uppercase tracking-wider font-semibold">Supported:</span>
-                <span class="bg-white/5 border border-white/10 px-3 py-1 rounded-full text-sm text-slate-300 font-medium">AWS ✓</span>
-                <span class="bg-white/5 border border-white/10 px-3 py-1 rounded-full text-sm text-slate-300 font-medium">Azure ✓</span>
-                <span class="bg-white/5 border border-white/10 px-3 py-1 rounded-full text-sm text-slate-300 font-medium">GCP ✓</span>
-                <span class="bg-white/5 border border-white/10 px-3 py-1 rounded-full text-sm text-slate-300 font-medium">OCI ✓</span>
+            <div class="hero-line flex flex-wrap items-center justify-center lg:justify-start gap-3 mt-8">
+                <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Supported:</span>
+                <span class="bg-white/5 border border-white/10 px-3 py-1 rounded-full text-sm text-slate-200 font-medium">AWS ✓</span>
+                <span class="bg-white/5 border border-white/10 px-3 py-1 rounded-full text-sm text-slate-200 font-medium">Azure ✓</span>
+                <span class="bg-white/5 border border-white/10 px-3 py-1 rounded-full text-sm text-slate-200 font-medium">GCP ✓</span>
+                <span class="bg-white/5 border border-white/10 px-3 py-1 rounded-full text-sm text-slate-200 font-medium">OCI ✓</span>
             </div>
         </div>
-        <div class="flex-1 w-full glass rounded-3xl p-8 md:p-10 border-white/10 shadow-2xl reveal">
-            <div class="flex flex-col items-center gap-4 max-w-sm mx-auto">
-                <div class="w-full bg-slate-900/50 rounded-2xl p-5 border border-white/5">
-                    <div class="flex flex-wrap items-center justify-center gap-3 text-sm">
-                        <span class="text-slate-400 path-pulse" style="animation-delay:0s">🌐 Internet</span>
-                        <span class="text-blue-400">→</span>
-                        <span class="text-red-400 font-medium path-pulse" style="animation-delay:0.4s">🛡️ Public VM</span>
-                        <span class="text-blue-400">→</span>
-                        <span class="text-amber-400 font-medium path-pulse" style="animation-delay:0.8s">🔑 IAM Role</span>
-                        <span class="text-blue-400">→</span>
-                        <span class="text-emerald-400 font-medium path-pulse" style="animation-delay:1.2s">📦 S3 Bucket</span>
-                    </div>
-                </div>
-                <div class="flex items-center gap-6 bg-slate-900/50 rounded-2xl px-6 py-4 border border-white/5 w-full justify-center">
-                    <span class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-blue-200 bg-clip-text text-transparent count-up" data-target="87">0</span>
-                    <span class="text-slate-400 text-sm font-medium">Risk Score</span>
-                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span class="text-emerald-400 text-xs font-medium">Live</span>
-                </div>
-                <p class="text-slate-500 text-xs text-center">Attack path visualization · Auto-remediation ready</p>
+        <div class="flex-1 w-full glass rounded-3xl p-8 md:p-10 shadow-2xl reveal">
+            <svg viewBox="0 0 460 200" class="w-full h-auto">
+                <line x1="55" y1="100" x2="180" y2="100" stroke="#2563eb" stroke-width="2" class="flow-line" opacity="0.7"/>
+                <line x1="230" y1="100" x2="300" y2="55" stroke="#2563eb" stroke-width="2" class="flow-line" opacity="0.7"/>
+                <line x1="330" y1="55" x2="395" y2="100" stroke="#2563eb" stroke-width="2" class="flow-line" opacity="0.7"/>
+                <circle cx="45" cy="100" r="20" fill="none" stroke="#60a5fa" stroke-width="1.5" class="node-ring"/>
+                <circle cx="45" cy="100" r="22" fill="#0a0e17" stroke="#334155" stroke-width="1"/>
+                <text x="45" y="106" text-anchor="middle" font-size="16">🌐</text>
+                <circle cx="215" cy="100" r="22" fill="none" stroke="#f87171" stroke-width="1.5" class="node-ring" style="animation-delay:0.4s"/>
+                <circle cx="215" cy="100" r="24" fill="#0a0e17" stroke="#f87171" stroke-width="1"/>
+                <text x="215" y="107" text-anchor="middle" font-size="17">🛡️</text>
+                <circle cx="315" cy="55" r="18" fill="none" stroke="#fbbf24" stroke-width="1.5" class="node-ring" style="animation-delay:0.8s"/>
+                <circle cx="315" cy="55" r="20" fill="#0a0e17" stroke="#fbbf24" stroke-width="1"/>
+                <text x="315" y="61" text-anchor="middle" font-size="14">🔑</text>
+                <circle cx="415" cy="100" r="20" fill="none" stroke="#34d399" stroke-width="1.5" class="node-ring" style="animation-delay:1.2s"/>
+                <circle cx="415" cy="100" r="22" fill="#0a0e17" stroke="#34d399" stroke-width="1"/>
+                <text x="415" y="106" text-anchor="middle" font-size="16">📦</text>
+                <text x="45" y="140" text-anchor="middle" fill="#94a3b8" font-size="11">Internet</text>
+                <text x="215" y="145" text-anchor="middle" fill="#94a3b8" font-size="11">Public VM</text>
+                <text x="315" y="30" text-anchor="middle" fill="#94a3b8" font-size="11">IAM Role</text>
+                <text x="415" y="140" text-anchor="middle" fill="#94a3b8" font-size="11">S3 Bucket</text>
+            </svg>
+            <div class="flex items-center gap-6 bg-white/5 rounded-2xl px-6 py-4 border border-white/10 w-full justify-center mt-4">
+                <span class="text-3xl font-bold hero-gradient count-up" data-target="87">0</span>
+                <span class="text-slate-300 text-sm font-medium">Risk Score</span>
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span class="text-emerald-300 text-xs font-medium">Live</span>
             </div>
+            <p class="text-slate-400 text-xs text-center mt-3">Attack path visualization · Auto-remediation ready</p>
         </div>
     </section>
 
-    <div class="border-y border-white/5 py-10 text-center max-w-7xl mx-auto px-6 reveal">
-        <p class="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-5">Trusted by security teams building the future</p>
-        <div class="flex flex-wrap items-center justify-center gap-8 md:gap-12">
-            <span class="trust-item text-slate-400 font-medium text-sm">🏢 Startups</span>
-            <span class="trust-item text-slate-400 font-medium text-sm">🔒 Enterprises</span>
-            <span class="trust-item text-slate-400 font-medium text-sm">☁️ Cloud-Native</span>
-            <span class="trust-item text-slate-400 font-medium text-sm">🧠 AI-Driven</span>
-            <span class="trust-item text-slate-400 font-medium text-sm">🌍 Global</span>
+    <div class="border-y border-white/5 py-10 max-w-full mx-auto relative z-10 overflow-hidden">
+        <p class="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-5 text-center">Trusted by security teams building the future</p>
+        <div class="trust-marquee">
+            <span class="trust-item text-slate-300 font-medium text-sm">🏢 Startups</span>
+            <span class="trust-item text-slate-300 font-medium text-sm">🔒 Enterprises</span>
+            <span class="trust-item text-slate-300 font-medium text-sm">☁️ Cloud-Native</span>
+            <span class="trust-item text-slate-300 font-medium text-sm">🧠 AI-Driven</span>
+            <span class="trust-item text-slate-300 font-medium text-sm">🌍 Global</span>
+            <span class="trust-item text-slate-300 font-medium text-sm">🏢 Startups</span>
+            <span class="trust-item text-slate-300 font-medium text-sm">🔒 Enterprises</span>
+            <span class="trust-item text-slate-300 font-medium text-sm">☁️ Cloud-Native</span>
+            <span class="trust-item text-slate-300 font-medium text-sm">🧠 AI-Driven</span>
+            <span class="trust-item text-slate-300 font-medium text-sm">🌍 Global</span>
         </div>
     </div>
 
-    <section id="platform" class="py-20 max-w-7xl mx-auto px-6 md:px-10">
+    <section id="platform" class="py-20 max-w-7xl mx-auto px-6 md:px-10 relative z-10">
         <h2 class="text-3xl md:text-4xl font-bold text-center reveal">Built For <span class="hero-gradient">Modern Security Teams</span></h2>
-        <p class="text-slate-400 text-center max-w-2xl mx-auto mt-4 text-lg reveal">One platform. Complete visibility. Autonomous remediation.</p>
+        <p class="text-slate-300 text-center max-w-2xl mx-auto mt-4 text-lg reveal">One platform. Complete visibility. Autonomous remediation.</p>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-12">
-            <div class="glass-card rounded-2xl p-8 text-center reveal"><div class="text-4xl mb-4">🌩️</div><h3 class="text-xl font-semibold text-white">Multi-Cloud Visibility</h3><p class="text-slate-400 text-sm mt-3 leading-relaxed">Unified security across AWS, Azure, GCP and OCI – one platform, one view.</p></div>
-            <div class="glass-card rounded-2xl p-8 text-center reveal"><div class="text-4xl mb-4">🔗</div><h3 class="text-xl font-semibold text-white">Attack Path Analysis</h3><p class="text-slate-400 text-sm mt-3 leading-relaxed">See exactly how an attacker would move from the internet to your sensitive data.</p></div>
-            <div class="glass-card rounded-2xl p-8 text-center reveal"><div class="text-4xl mb-4">🛠️</div><h3 class="text-xl font-semibold text-white">Auto-Remediation</h3><p class="text-slate-400 text-sm mt-3 leading-relaxed">Not just alerts – Aegis fixes misconfigurations, open ports, and excessive permissions.</p></div>
-            <div class="glass-card rounded-2xl p-8 text-center reveal"><div class="text-4xl mb-4">🤖</div><h3 class="text-xl font-semibold text-white">AI Security Copilot</h3><p class="text-slate-400 text-sm mt-3 leading-relaxed">Ask Aegis AI any security question – get instant, context-aware answers.</p></div>
-            <div class="glass-card rounded-2xl p-8 text-center reveal"><div class="text-4xl mb-4">📊</div><h3 class="text-xl font-semibold text-white">Compliance &amp; Reporting</h3><p class="text-slate-400 text-sm mt-3 leading-relaxed">Generate PCI-DSS, HIPAA, SOC2 reports with one click.</p></div>
-            <div class="glass-card rounded-2xl p-8 text-center reveal"><div class="text-4xl mb-4">🔓</div><h3 class="text-xl font-semibold text-white">100% Open Source</h3><p class="text-slate-400 text-sm mt-3 leading-relaxed">No vendor lock-in. Full transparency. Built by the community.</p></div>
+            <div class="glass-card rounded-2xl p-8 text-center reveal"><div class="text-4xl mb-4">🌩️</div><h3 class="text-xl font-semibold text-white">Multi-Cloud Visibility</h3><p class="text-slate-300 text-sm mt-3 leading-relaxed">Unified security across AWS, Azure, GCP and OCI – one platform, one view.</p></div>
+            <div class="glass-card rounded-2xl p-8 text-center reveal"><div class="text-4xl mb-4">🔗</div><h3 class="text-xl font-semibold text-white">Attack Path Analysis</h3><p class="text-slate-300 text-sm mt-3 leading-relaxed">See exactly how an attacker would move from the internet to your sensitive data.</p></div>
+            <div class="glass-card rounded-2xl p-8 text-center reveal"><div class="text-4xl mb-4">🛠️</div><h3 class="text-xl font-semibold text-white">Auto-Remediation</h3><p class="text-slate-300 text-sm mt-3 leading-relaxed">Not just alerts – Aegis fixes misconfigurations, open ports, and excessive permissions.</p></div>
+            <div class="glass-card rounded-2xl p-8 text-center reveal"><div class="text-4xl mb-4">🤖</div><h3 class="text-xl font-semibold text-white">AI Security Copilot</h3><p class="text-slate-300 text-sm mt-3 leading-relaxed">Ask Aegis AI any security question – get instant, context-aware answers.</p></div>
+            <div class="glass-card rounded-2xl p-8 text-center reveal"><div class="text-4xl mb-4">📊</div><h3 class="text-xl font-semibold text-white">Compliance &amp; Reporting</h3><p class="text-slate-300 text-sm mt-3 leading-relaxed">Generate PCI-DSS, HIPAA, SOC2 reports with one click.</p></div>
+            <div class="glass-card rounded-2xl p-8 text-center reveal"><div class="text-4xl mb-4">🔓</div><h3 class="text-xl font-semibold text-white">100% Open Source</h3><p class="text-slate-300 text-sm mt-3 leading-relaxed">No vendor lock-in. Full transparency. Built by the community.</p></div>
         </div>
     </section>
 
-    <section id="solutions" class="py-16 max-w-7xl mx-auto px-6 md:px-10">
+    <section id="solutions" class="py-16 max-w-7xl mx-auto px-6 md:px-10 relative z-10">
         <h2 class="text-3xl md:text-4xl font-bold text-center reveal">Built for <span class="hero-gradient">every stage</span></h2>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
             <div class="glass-card rounded-2xl p-8 reveal">
                 <div class="text-3xl mb-3">🚀</div>
                 <h3 class="text-lg font-semibold text-white">Startups</h3>
-                <p class="text-slate-400 text-sm mt-2 leading-relaxed">Get enterprise-grade scanning from day one, without an enterprise budget.</p>
+                <p class="text-slate-300 text-sm mt-2 leading-relaxed">Get enterprise-grade scanning from day one, without an enterprise budget.</p>
             </div>
             <div class="glass-card rounded-2xl p-8 reveal">
                 <div class="text-3xl mb-3">📈</div>
                 <h3 class="text-lg font-semibold text-white">Growing teams</h3>
-                <p class="text-slate-400 text-sm mt-2 leading-relaxed">Add auto-remediation and multi-account scanning as your cloud footprint grows.</p>
+                <p class="text-slate-300 text-sm mt-2 leading-relaxed">Add auto-remediation and multi-account scanning as your cloud footprint grows.</p>
             </div>
             <div class="glass-card rounded-2xl p-8 reveal">
                 <div class="text-3xl mb-3">👤</div>
                 <h3 class="text-lg font-semibold text-white">Independent developers</h3>
-                <p class="text-slate-400 text-sm mt-2 leading-relaxed">Run it free, forever, on your own side projects and client work.</p>
+                <p class="text-slate-300 text-sm mt-2 leading-relaxed">Run it free, forever, on your own side projects and client work.</p>
             </div>
         </div>
     </section>
 
-    <section class="py-16 max-w-7xl mx-auto px-6 md:px-10">
-        <div class="glass rounded-3xl p-8 md:p-12 border-white/10 reveal">
+    <section class="py-16 max-w-7xl mx-auto px-6 md:px-10 relative z-10">
+        <div class="glass rounded-3xl p-8 md:p-12 reveal">
             <h2 class="text-3xl md:text-4xl font-bold text-center">Security <span class="hero-gradient">Command Center</span></h2>
-            <p class="text-slate-400 text-center max-w-2xl mx-auto mt-4 text-lg">Real-time visibility, attack paths, and auto-remediation at a glance.</p>
+            <p class="text-slate-300 text-center max-w-2xl mx-auto mt-4 text-lg">Real-time visibility, attack paths, and auto-remediation at a glance.</p>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mt-10">
-                <div class="glass-card rounded-2xl p-6 text-center"><div class="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-400 to-blue-200 bg-clip-text text-transparent count-up" data-target="92">0</div><p class="text-slate-400 text-sm mt-1">🛡️ Security Posture</p></div>
-                <div class="glass-card rounded-2xl p-6 text-center"><div class="text-3xl md:text-4xl font-bold text-white count-up" data-target="12481">0</div><p class="text-slate-400 text-sm mt-1">☁️ Assets Protected</p></div>
-                <div class="glass-card rounded-2xl p-6 text-center"><div class="text-3xl md:text-4xl font-bold text-amber-400 count-up" data-target="8">0</div><p class="text-slate-400 text-sm mt-1">🔥 Active Attack Paths</p></div>
-                <div class="glass-card rounded-2xl p-6 text-center"><div class="text-3xl md:text-4xl font-bold text-emerald-400 count-up" data-target="41">0</div><p class="text-slate-400 text-sm mt-1">⚡ Auto-Remediated</p></div>
+                <div class="glass-card rounded-2xl p-6 text-center"><div class="text-3xl md:text-4xl font-bold hero-gradient count-up" data-target="92">0</div><p class="text-slate-300 text-sm mt-1">🛡️ Security Posture</p></div>
+                <div class="glass-card rounded-2xl p-6 text-center"><div class="text-3xl md:text-4xl font-bold text-white count-up" data-target="12481">0</div><p class="text-slate-300 text-sm mt-1">☁️ Assets Protected</p></div>
+                <div class="glass-card rounded-2xl p-6 text-center"><div class="text-3xl md:text-4xl font-bold text-amber-300 count-up" data-target="8">0</div><p class="text-slate-300 text-sm mt-1">🔥 Active Attack Paths</p></div>
+                <div class="glass-card rounded-2xl p-6 text-center"><div class="text-3xl md:text-4xl font-bold text-emerald-300 count-up" data-target="41">0</div><p class="text-slate-300 text-sm mt-1">⚡ Auto-Remediated</p></div>
             </div>
         </div>
     </section>
 
-    <section id="about" class="py-20 max-w-7xl mx-auto px-6 md:px-10">
+    <section id="about" class="py-20 max-w-7xl mx-auto px-6 md:px-10 relative z-10">
         <h2 class="text-3xl md:text-4xl font-bold text-center reveal">About <span class="hero-gradient">Aegis</span></h2>
-        <p class="text-slate-400 text-center max-w-3xl mx-auto mt-4 text-lg reveal">The world's first open-source, self-healing cloud security platform.</p>
+        <p class="text-slate-300 text-center max-w-3xl mx-auto mt-4 text-lg reveal">The world's first open-source, self-healing cloud security platform.</p>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-10 mt-12">
             <div class="glass-card rounded-3xl p-8 reveal">
                 <div class="text-5xl mb-4">🚀</div>
                 <h3 class="text-2xl font-bold text-white">The Mission</h3>
-                <p class="text-slate-400 mt-4 leading-relaxed">Aegis was built to democratize cloud security. Commercial tools like <span class="text-white font-medium">Wiz</span> and <span class="text-white font-medium">Orca</span> cost millions – Aegis is <span class="text-emerald-400 font-medium">100% free</span> and open source.</p>
-                <p class="text-slate-400 mt-3 leading-relaxed">We believe every team, from startups to enterprises, should have access to world-class cloud security without the billion-dollar price tag.</p>
+                <p class="text-slate-300 mt-4 leading-relaxed">Aegis was built to democratize cloud security. Commercial tools like <span class="text-white font-medium">Wiz</span> and <span class="text-white font-medium">Orca</span> cost millions – Aegis is <span class="text-emerald-300 font-medium">100% free</span> and open source.</p>
+                <p class="text-slate-300 mt-3 leading-relaxed">We believe every team, from startups to enterprises, should have access to world-class cloud security without the billion-dollar price tag.</p>
             </div>
             <div class="glass-card rounded-3xl p-8 reveal">
                 <div class="text-5xl mb-4">🧠</div>
                 <h3 class="text-2xl font-bold text-white">What Aegis Does</h3>
-                <ul class="text-slate-400 mt-4 space-y-3">
+                <ul class="text-slate-300 mt-4 space-y-3">
                     <li>✓ <span class="text-white">Multi-Cloud Scanning</span> – AWS, Azure, GCP, OCI</li>
                     <li>✓ <span class="text-white">Attack Path Analysis</span> – See how attackers move</li>
                     <li>✓ <span class="text-white">Auto-Remediation</span> – Fix risks automatically</li>
@@ -2938,13 +2987,13 @@ LANDING_PAGE_HTML = """
                     <div class="text-5xl">👤</div>
                     <div>
                         <h3 class="text-2xl font-bold text-white">Built by Austin Emmanuel</h3>
-                        <p class="text-slate-400 mt-2 leading-relaxed">Aegis was built by a <span class="text-white font-medium">19-year-old founder from Nigeria</span> who saw that cloud security was locked behind massive paywalls. This is a platform <span class="text-blue-400 font-medium">by the community, for the community</span>.</p>
+                        <p class="text-slate-300 mt-2 leading-relaxed">Aegis was built by a <span class="text-white font-medium">19-year-old founder from Nigeria</span> who saw that cloud security was locked behind massive paywalls. This is a platform <span class="text-blue-300 font-medium">by the community, for the community</span>.</p>
                         <div class="flex items-center gap-3 mt-4">
                             <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank" class="text-slate-400 hover:text-white transition text-sm"><i class="fab fa-github"></i> GitHub</a>
                             <span class="text-slate-600">•</span>
-                            <span class="text-slate-500 text-sm">Open Source</span>
+                            <span class="text-slate-400 text-sm">Open Source</span>
                             <span class="text-slate-600">•</span>
-                            <span class="text-emerald-400 text-sm font-medium">v2.0</span>
+                            <span class="text-emerald-300 text-sm font-medium">v2.0</span>
                         </div>
                     </div>
                 </div>
@@ -2952,60 +3001,112 @@ LANDING_PAGE_HTML = """
         </div>
     </section>
 
-    <section class="py-20 max-w-7xl mx-auto px-6 md:px-10">
-        <div class="glass rounded-3xl p-8 md:p-12 text-center border-white/10 reveal">
+    <section class="py-20 max-w-7xl mx-auto px-6 md:px-10 relative z-10">
+        <div class="glass rounded-3xl p-8 md:p-12 text-center reveal">
             <h2 class="text-3xl md:text-4xl font-bold">Ready to secure <span class="hero-gradient">your cloud</span>?</h2>
-            <p class="text-slate-400 text-lg max-w-2xl mx-auto mt-4">Start securing your AWS, Azure, GCP and OCI infrastructure in minutes.</p>
-            <a href="/signup" class="btn-primary text-white px-10 py-4 rounded-full font-semibold text-lg inline-block mt-8 shadow-lg shadow-blue-500/25">Start Free – No Credit Card</a>
+            <p class="text-slate-300 text-lg max-w-2xl mx-auto mt-4">Start securing your AWS, Azure, GCP and OCI infrastructure in minutes.</p>
+            <a href="/signup" class="btn-primary text-white px-10 py-4 rounded-full font-semibold text-lg inline-block mt-8 shadow-lg shadow-blue-500/30">Start Free – No Credit Card</a>
         </div>
     </section>
 
-    <footer class="border-t border-white/5 py-12 max-w-7xl mx-auto px-6">
+    <footer class="border-t border-white/5 py-12 max-w-7xl mx-auto px-6 relative z-10">
         <div class="grid grid-cols-2 md:grid-cols-4 gap-8 mb-10 text-sm">
             <div>
-                <div class="text-slate-300 font-semibold mb-3">Platform</div>
-                <div class="flex flex-col gap-2 text-slate-500">
+                <div class="text-slate-200 font-semibold mb-3">Platform</div>
+                <div class="flex flex-col gap-2 text-slate-400">
                     <a href="#platform" class="hover:text-white transition">Multi-cloud scanning</a>
                     <a href="#platform" class="hover:text-white transition">Attack path analysis</a>
                     <a href="#platform" class="hover:text-white transition">Auto-remediation</a>
                 </div>
             </div>
             <div>
-                <div class="text-slate-300 font-semibold mb-3">Solutions</div>
-                <div class="flex flex-col gap-2 text-slate-500">
+                <div class="text-slate-200 font-semibold mb-3">Solutions</div>
+                <div class="flex flex-col gap-2 text-slate-400">
                     <a href="#solutions" class="hover:text-white transition">Startups</a>
                     <a href="#solutions" class="hover:text-white transition">Growing teams</a>
                     <a href="#solutions" class="hover:text-white transition">Independent devs</a>
                 </div>
             </div>
             <div>
-                <div class="text-slate-300 font-semibold mb-3">Resources</div>
-                <div class="flex flex-col gap-2 text-slate-500">
+                <div class="text-slate-200 font-semibold mb-3">Resources</div>
+                <div class="flex flex-col gap-2 text-slate-400">
                     <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank" class="hover:text-white transition">Documentation</a>
                     <a href="/pricing" class="hover:text-white transition">Pricing</a>
                 </div>
             </div>
             <div>
-                <div class="text-slate-300 font-semibold mb-3">Company</div>
-                <div class="flex flex-col gap-2 text-slate-500">
+                <div class="text-slate-200 font-semibold mb-3">Company</div>
+                <div class="flex flex-col gap-2 text-slate-400">
                     <a href="#about" class="hover:text-white transition">About</a>
                     <a href="https://github.com/CloudHeal-founder/CloudHeal" target="_blank" class="hover:text-white transition">GitHub</a>
                     <a href="/login" class="hover:text-white transition">Dashboard</a>
                 </div>
             </div>
         </div>
-        <div class="border-t border-white/5 pt-6 text-center text-slate-500 text-sm">
-            <p class="text-xs text-slate-600">© 2026 Aegis – Built by <span class="text-slate-400 font-medium">Austin Emmanuel</span></p>
-            <p class="text-xs text-slate-700 mt-1">Open Source · Self-Healing Cloud Security · v2.0</p>
+        <div class="border-t border-white/5 pt-6 text-center text-slate-400 text-sm">
+            <p class="text-xs text-slate-500">© 2026 Aegis – Built by <span class="text-slate-300 font-medium">Austin Emmanuel</span></p>
+            <p class="text-xs text-slate-600 mt-1">Open Source · Self-Healing Cloud Security · v2.0</p>
         </div>
     </footer>
 
     <script>
-        // Scroll-reveal
+        // Particle network background
+        (function() {
+            const canvas = document.getElementById('particle-bg');
+            const ctx = canvas.getContext('2d');
+            let w, h, particles;
+            const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            function resize() {
+                w = canvas.width = window.innerWidth;
+                h = canvas.height = window.innerHeight;
+            }
+            function init() {
+                resize();
+                const count = Math.min(70, Math.floor((w * h) / 18000));
+                particles = Array.from({length: count}, () => ({
+                    x: Math.random() * w, y: Math.random() * h,
+                    vx: (Math.random() - 0.5) * 0.35, vy: (Math.random() - 0.5) * 0.35
+                }));
+            }
+            function step() {
+                ctx.clearRect(0, 0, w, h);
+                for (const p of particles) {
+                    p.x += p.vx; p.y += p.vy;
+                    if (p.x < 0 || p.x > w) p.vx *= -1;
+                    if (p.y < 0 || p.y > h) p.vy *= -1;
+                }
+                for (let i = 0; i < particles.length; i++) {
+                    for (let j = i + 1; j < particles.length; j++) {
+                        const dx = particles[i].x - particles[j].x, dy = particles[i].y - particles[j].y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+                        if (dist < 130) {
+                            ctx.strokeStyle = `rgba(96,165,250,${0.15 * (1 - dist / 130)})`;
+                            ctx.lineWidth = 1;
+                            ctx.beginPath(); ctx.moveTo(particles[i].x, particles[i].y); ctx.lineTo(particles[j].x, particles[j].y); ctx.stroke();
+                        }
+                    }
+                }
+                for (const p of particles) {
+                    ctx.fillStyle = 'rgba(147,197,253,0.55)';
+                    ctx.beginPath(); ctx.arc(p.x, p.y, 1.6, 0, Math.PI * 2); ctx.fill();
+                }
+                if (!reduced) requestAnimationFrame(step);
+            }
+            window.addEventListener('resize', init);
+            init();
+            if (!reduced) requestAnimationFrame(step);
+        })();
+
+        // Scroll-reveal with stagger
         const revealEls = document.querySelectorAll('.reveal');
         if ('IntersectionObserver' in window) {
             const io = new IntersectionObserver((entries) => {
-                entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+                entries.forEach((e, idx) => {
+                    if (e.isIntersecting) {
+                        setTimeout(() => e.target.classList.add('in'), (idx % 3) * 90);
+                        io.unobserve(e.target);
+                    }
+                });
             }, { threshold: 0.15 });
             revealEls.forEach(el => io.observe(el));
         } else {
@@ -3017,12 +3118,12 @@ LANDING_PAGE_HTML = """
             const target = parseInt(el.getAttribute('data-target'), 10) || 0;
             const dur = 1200;
             const start = performance.now();
-            function step(now) {
+            function frame(now) {
                 const progress = Math.min((now - start) / dur, 1);
                 el.textContent = Math.round(progress * target).toLocaleString();
-                if (progress < 1) requestAnimationFrame(step);
+                if (progress < 1) requestAnimationFrame(frame);
             }
-            requestAnimationFrame(step);
+            requestAnimationFrame(frame);
         }
         const countEls = document.querySelectorAll('.count-up');
         if ('IntersectionObserver' in window) {
