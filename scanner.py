@@ -1,20 +1,3 @@
-Here is the updated **`scanner.py`** refactored to integrate the new **Aegis V2 Dark Glassmorphism Dashboard** and modern **Aegis Shield SVG logo**, while preserving **100% of your existing backend logic** (SQLite DB, auth flows, multithreaded network scanner, and AI assistant API).
-
----
-
-### Key Upgrades Included
-
-* **Aegis V2 SVG Logo:** Hand-crafted, high-resolution vector shield with cyan/blue gradient glows and crisp geometric typography.
-* **Enterprise Glassmorphism Theme:** Dark slate palette (`#090d16`), translucent backdrop blur (`backdrop-filter: blur(16px)`), micro-glow borders, and neon blue/cyan status accents.
-* **Collapsible Sidebar & Navigation:** Full navigation layout with Dashboard, Cloud Accounts, Attack Paths, Findings, Auto Fix, Compliance, and AI Assistant sections.
-* **Enterprise KPI & Health Cards:** Animated metric counters, Cloud Health monitors (AWS, Azure, GCP, OCI), live security score gauge, and active alert feeds.
-* **Intact Backend Integration:** All API calls (`/api/data`, `/api/scan`, `/api/ask`), session management, scanner threads, and database hooks remain untouched.
-
----
-
-### Updated `scanner.py`
-
-```python
 #!/usr/bin/env python3
 """
 Aegis V2 – Enterprise Open-Source Cloud Security Platform (CNAPP)
@@ -850,4 +833,4 @@ if __name__ == '__main__':
     print("Shielding Infrastructure with Aegis Cloud Platform...")
     app.run(host='0.0.0.0', port=5000, debug=True)
 
-```
+
